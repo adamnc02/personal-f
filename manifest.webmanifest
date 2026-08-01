@@ -1,6 +1,6 @@
 {
-  "name": "Ledger",
-  "short_name": "Ledger",
+  "name": "Finance",
+  "short_name": "Finance",
   "description": "Personal finance tracker — salary, loans, bills, and what-if scenarios.",
   "start_url": "./",
   "scope": "./",
