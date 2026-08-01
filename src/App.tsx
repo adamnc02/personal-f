@@ -38,7 +38,7 @@ function App() {
             className="flex-1 overflow-y-auto overflow-x-hidden"
             style={{
               paddingTop: 'var(--safe-top)',
-              paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 20px)',
+              paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 12px + 20px)',
               WebkitOverflowScrolling: 'touch',
             }}
           >
