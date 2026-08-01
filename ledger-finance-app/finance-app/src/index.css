@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  /* Core surfaces */
+  --color-bg: #0e1320;
+  --color-bg-elevated: #161d30;
+  --color-surface: #1b2338;
+
+  /* Monzo-inspired card colors, pulled from the reference screenshots */
+  --color-coral: #ff5b4c;
+  --color-coral-dark: #e2483a;
+  --color-joint: #fdfdfd;
+
+  /* Text */
+  --color-ink: #f5f6fa;
+  --color-ink-muted: #8992a9;
+  --color-ink-faint: #545e78;
+
+  /* Progress rings */
+  --color-track: #38415a;
+
+  /* Semantic */
+  --color-positive: #4cd08a;
+  --color-negative: #ff5b4c;
+
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
