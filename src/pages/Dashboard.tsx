@@ -86,18 +86,15 @@ export function Dashboard() {
       </SwipeCards>
 
       <CollapsibleSection title={cardIndex === 0 ? 'Bills' : 'Joint Bills'} className="mt-8">
-        {cardIndex === 0 ? (
-          <>
-            <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} />
-            <div className="mt-6 rounded-2xl p-5" style={{ background: 'var(--color-surface)' }}>
-              <SummaryRow label="Standing orders only" value={standingOrderTotal} />
-              <SummaryRow label="Including joint bill split" value={fullOutgoings} emphasized />
-            </div>
-          </>
-        ) : (
-          <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />
-        )}
+        {cardIndex === 0 ? <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} /> : <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />}
       </CollapsibleSection>
+
+      {cardIndex === 0 && (
+        <div className="mt-4 rounded-2xl p-5" style={{ background: 'var(--color-surface)' }}>
+          <SummaryRow label="Standing orders only" value={standingOrderTotal} />
+          <SummaryRow label="Including joint bill split" value={fullOutgoings} emphasized />
+        </div>
+      )}
 
       {data.loans.length > 0 && (
         <CollapsibleSection title="Loans" className="mt-10">
