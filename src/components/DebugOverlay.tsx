@@ -8,28 +8,40 @@ interface DebugValues {
   innerHeight: number
   screenHeight: number
   standalone: boolean | string
+  storageSyncId: string
+  personCount: number
 }
 
 /**
- * Visit the app with ?debug=1 in the URL (e.g. https://yourname.github.io/finance-app/?debug=1#/)
- * to see the real measured values behind the safe-area/viewport-height fix, directly on-device.
- * Not linked from anywhere in the UI — remove this file once the nav gap is sorted.
+ * TEMPORARY — always renders right now (no ?debug=1 needed) so we can see
+ * this from a home-screen icon launch, which doesn't reliably share
+ * localStorage-set flags with a regular Safari tab. Remove once the nav gap
+ * is diagnosed.
+ *
+ * storageSyncId is a random id written to localStorage on first read. If it
+ * comes out DIFFERENT between a Safari tab and the home-screen icon, that
+ * proves the two are using separate storage — which would affect the app's
+ * real data too, not just this debug flag.
  */
 export function DebugOverlay() {
   const [values, setValues] = useState<DebugValues | null>(null)
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    // The home-screen icon's launch URL is fixed by the manifest's start_url,
-    // so a ?debug=1 you add in Safari never reaches a standalone launch —
-    // persisting the flag in localStorage (shared between Safari and the
-    // installed icon, same origin) is what makes it carry over.
-    if (params.get('debug') === '1') localStorage.setItem('debug', '1')
-    if (params.get('debug') === '0') localStorage.removeItem('debug')
-    if (localStorage.getItem('debug') !== '1') return
+    let syncId = localStorage.getItem('debug-sync-id')
+    if (!syncId) {
+      syncId = Math.random().toString(36).slice(2, 8)
+      localStorage.setItem('debug-sync-id', syncId)
+    }
 
     function read() {
       const style = getComputedStyle(document.documentElement)
+      let personCount = -1
+      try {
+        const raw = localStorage.getItem('ledger:app-data:v1')
+        personCount = raw ? (JSON.parse(raw).people?.length ?? -1) : -1
+      } catch {
+        personCount = -1
+      }
       setValues({
         appHeight: style.getPropertyValue('--app-height').trim(),
         safeTop: style.getPropertyValue('--safe-top').trim(),
@@ -38,6 +50,8 @@ export function DebugOverlay() {
         innerHeight: window.innerHeight,
         screenHeight: window.screen?.height ?? 0,
         standalone: (window.navigator as Navigator & { standalone?: boolean }).standalone ?? 'n/a',
+        storageSyncId: syncId!,
+        personCount,
       })
     }
 
@@ -72,7 +86,9 @@ export function DebugOverlay() {
 visualViewport.height: ${values.visualViewportHeight}
 window.innerHeight: ${values.innerHeight}
 screen.height: ${values.screenHeight}
-navigator.standalone: ${values.standalone}`}
+navigator.standalone: ${values.standalone}
+storageSyncId: ${values.storageSyncId}
+people in storage: ${values.personCount}`}
     </div>
   )
 }
