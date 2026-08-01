@@ -34,7 +34,7 @@
      before that script first runs. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --nav-h: 64px;
+  --nav-h: 56px;
 }
 
 /* html/body never scroll — #app-content (inside #app-shell) is the only

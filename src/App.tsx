@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react'
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { BottomNav } from './components/BottomNav'
-import { DebugOverlay } from './components/DebugOverlay'
 import { Dashboard } from './pages/Dashboard'
 import { Salary } from './pages/Salary'
 import { Loans } from './pages/Loans'
@@ -53,7 +52,6 @@ function App() {
             </Routes>
           </div>
           <BottomNav />
-          <DebugOverlay />
         </div>
       </HashRouter>
     </AppProvider>
