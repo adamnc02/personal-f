@@ -1,4 +1,4 @@
-# Ledger — personal finance tracker
+# Finance — personal finance tracker
 
 A personal finance dashboard: net salary (UK tax/NI/pension/student loan), loan
 payoff tracking, personal + joint account bills with a Monzo-card-style

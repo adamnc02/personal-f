@@ -8,6 +8,7 @@ import { calculateNetSalary } from '../lib/tax'
 import { billsByLocation, personalBillsTotal, jointContributionForPerson, standingOrderTotalForPerson, totalOutgoingsForPerson, jointAccountTotal } from '../lib/bills'
 import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
+import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Landmark } from 'lucide-react'
 import type { Bill } from '../types/models'
 
@@ -58,7 +59,7 @@ export function Dashboard() {
   const personalTableRows = jointContribution > 0 ? [...personalBills, jointAccountRow] : personalBills
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-6 pb-28">
+    <div className="max-w-md mx-auto px-4 pt-6">
       <header className="mb-6">
         <p className="font-body text-sm text-[var(--color-ink-muted)]">Welcome back</p>
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">{me.name}'s Overview</h1>
@@ -84,7 +85,7 @@ export function Dashboard() {
         </BankCard>
       </SwipeCards>
 
-      <section className="mt-8">
+      <CollapsibleSection title={cardIndex === 0 ? 'Bills' : 'Joint Bills'} className="mt-8">
         {cardIndex === 0 ? (
           <>
             <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} />
@@ -96,23 +97,25 @@ export function Dashboard() {
         ) : (
           <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />
         )}
-      </section>
+      </CollapsibleSection>
 
       {data.loans.length > 0 && (
-        <section className="mt-10 flex flex-col items-center gap-10">
-          {data.loans.map((loan) => {
-            const summary = summarizeLoan(loan)
-            return (
-              <ProgressRing
-                key={loan.id}
-                percent={summary.percentRepaid}
-                value={`£${summary.remaining.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                label={`${loan.name} Remaining`}
-                icon={<Landmark size={56} strokeWidth={1.25} />}
-              />
-            )
-          })}
-        </section>
+        <CollapsibleSection title="Loans" className="mt-10">
+          <div className="flex flex-col items-center gap-10">
+            {data.loans.map((loan) => {
+              const summary = summarizeLoan(loan)
+              return (
+                <ProgressRing
+                  key={loan.id}
+                  percent={summary.percentRepaid}
+                  value={`£${summary.remaining.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  label={`${loan.name} Remaining`}
+                  icon={<Landmark size={56} strokeWidth={1.25} />}
+                />
+              )
+            })}
+          </div>
+        </CollapsibleSection>
       )}
     </div>
   )

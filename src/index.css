@@ -28,12 +28,39 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+:root {
+  /* Overwritten with real measured pixel values by the script in
+     index.html — these are only the fallback used for the brief instant
+     before that script first runs. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-h: 64px;
+}
+
+/* html/body never scroll — #app-content (inside #app-shell) is the only
+   scrollable element. Sized from var(--app-height), the same JS-measured
+   value set in index.html, rather than raw 100dvh: bare dvh can leave dead
+   space at the bottom on first paint in iOS standalone mode. */
+html {
+  background: var(--color-bg);
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
 }
 
 * {

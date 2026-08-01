@@ -12,11 +12,19 @@ const TABS = [
 export function BottomNav() {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 flex items-stretch justify-around border-t backdrop-blur-lg z-40"
+      // Anchored to #app-shell (position: relative) rather than the native
+      // viewport. `fixed` on iOS standalone relies on WebKit's own internal
+      // sense of the viewport, separate from any CSS/JS value, which can be
+      // stale on first paint and leave the nav sitting in the wrong place
+      // until a scroll forces a recompute. Anchoring to the shell instead
+      // means the nav just follows normal layout against a box that's
+      // already driven by --app-height, the same JS-measured value used
+      // everywhere else — no separate viewport reference left to go stale.
+      className="absolute bottom-0 left-0 right-0 flex items-stretch justify-around border-t backdrop-blur-lg z-40"
       style={{
         background: 'color-mix(in srgb, var(--color-bg-elevated) 92%, transparent)',
         borderColor: 'var(--color-track)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: 'var(--safe-bottom)',
       }}
     >
       {TABS.map(({ to, label, icon: Icon, end }) => (

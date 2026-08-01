@@ -20,7 +20,7 @@ export function Loans() {
   }, [routerLocation.state])
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-6 pb-28">
+    <div className="max-w-md mx-auto px-4 pt-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">Loans</h1>
         <button

@@ -230,7 +230,7 @@ export function parseBillsJson(json: string, people: { id: string; name: string 
 export interface AppBackup {
   version: 1
   exportedAt: string
-  app: 'ledger'
+  app: 'finance'
   data: AppData
 }
 
@@ -238,7 +238,7 @@ export function exportFullBackupToJson(data: AppData): string {
   const payload: AppBackup = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    app: 'ledger',
+    app: 'finance',
     data,
   }
   return JSON.stringify(payload, null, 2)
@@ -251,7 +251,7 @@ export function downloadFullBackup(data: AppData): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ledger-backup-${date}.json`
+  a.download = `finance-backup-${date}.json`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -261,7 +261,7 @@ export function parseFullBackupJson(json: string): AppData {
   const raw: unknown = parsed?.data ?? parsed // accept either the wrapped backup format or a raw AppData dump
 
   if (!raw || typeof raw !== 'object' || !Array.isArray((raw as AppData).people)) {
-    throw new Error('This doesn\'t look like a Ledger backup file.')
+    throw new Error('This doesn\'t look like a Finance backup file.')
   }
 
   return migrateAppData(raw as AppData)
