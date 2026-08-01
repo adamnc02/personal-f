@@ -20,7 +20,13 @@ export function DebugOverlay() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('debug') !== '1') return
+    // The home-screen icon's launch URL is fixed by the manifest's start_url,
+    // so a ?debug=1 you add in Safari never reaches a standalone launch —
+    // persisting the flag in localStorage (shared between Safari and the
+    // installed icon, same origin) is what makes it carry over.
+    if (params.get('debug') === '1') localStorage.setItem('debug', '1')
+    if (params.get('debug') === '0') localStorage.removeItem('debug')
+    if (localStorage.getItem('debug') !== '1') return
 
     function read() {
       const style = getComputedStyle(document.documentElement)
