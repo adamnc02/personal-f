@@ -96,6 +96,8 @@ export function loanAsBill(loan: Loan, asOf: Date = new Date()): Bill {
     category: 'Loan',
     ownerId: loan.ownerId,
     isStandingOrder: true,
+    icon: loan.icon,
+    iconColor: loan.iconColor,
   }
 }
 

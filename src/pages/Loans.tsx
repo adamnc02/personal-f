@@ -7,7 +7,7 @@ import type { Loan, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
 import { BillIcon } from '../components/BillIcon'
-import { BillIconPicker } from '../components/BillIconPicker'
+import { IconPickerButton } from '../components/IconPickerModal'
 
 export function Loans() {
   const { data, addLoan, updateLoan, removeLoan } = useAppData()
@@ -164,7 +164,7 @@ export function Loans() {
                     <p className="col-span-2 text-xs text-[var(--color-ink-muted)]">Final payment: {summary.finalPaymentDate}</p>
                   )}
 
-                  <BillIconPicker
+                  <IconPickerButton
                     icon={loan.icon}
                     iconColor={loan.iconColor}
                     onChange={(patch) => updateLoan(loan.id, patch)}
@@ -244,7 +244,7 @@ function NewLoanForm({
         </label>
       )}
 
-      <BillIconPicker
+      <IconPickerButton
         icon={icon}
         iconColor={iconColor}
         onChange={(patch) => {

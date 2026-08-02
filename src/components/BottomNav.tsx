@@ -21,9 +21,9 @@ export function BottomNav() {
       // Anchored to #app-shell (position: relative) rather than the native
       // viewport — see the comment history in this file's earlier version
       // for why `fixed` breaks on iOS standalone.
-      className="absolute left-0 right-0 mx-3 flex items-stretch gap-0.5 rounded-full backdrop-blur-lg z-40 border"
+      className="absolute left-0 right-0 mx-3 flex items-stretch gap-0.5 rounded-full backdrop-blur-lg z-[100] border"
       style={{
-        bottom: 'calc(var(--safe-bottom) + 8px)',
+        bottom: 'calc(var(--safe-bottom) - 6px)',
         height: 54,
         background: 'color-mix(in srgb, var(--color-bg-elevated) 92%, transparent)',
         borderColor: 'var(--color-track)',

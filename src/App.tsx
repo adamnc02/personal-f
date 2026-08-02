@@ -32,13 +32,15 @@ function App() {
           className="relative flex flex-col overflow-hidden"
           style={{ height: 'var(--app-height, 100dvh)', background: 'var(--color-bg)' }}
         >
+          <div className="edge-fade edge-fade-top" />
+          <div className="edge-fade edge-fade-bottom" />
           <div
             id="app-content"
             ref={contentRef}
             className="flex-1 overflow-y-auto overflow-x-hidden"
             style={{
               paddingTop: 'var(--safe-top)',
-              paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 8px + 20px)',
+              paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) - 6px + 20px)',
               WebkitOverflowScrolling: 'touch',
             }}
           >

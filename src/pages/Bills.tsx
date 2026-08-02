@@ -7,7 +7,7 @@ import type { Bill, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
 import { BillIcon } from '../components/BillIcon'
-import { BillIconPicker } from '../components/BillIconPicker'
+import { IconPickerButton } from '../components/IconPickerModal'
 
 export function Bills() {
   const { data, addBill, updateBill, removeBill, replaceBills } = useAppData()
@@ -229,7 +229,7 @@ function BillRow({
               </select>
             </label>
           )}
-          <BillIconPicker icon={bill.icon} iconColor={bill.iconColor} onChange={(patch) => onUpdate(patch)} />
+          <IconPickerButton icon={bill.icon} iconColor={bill.iconColor} onChange={(patch) => onUpdate(patch)} />
           <label className="flex items-center gap-2 col-span-2 mt-1">
             <input type="checkbox" checked={bill.isStandingOrder} onChange={(e) => onUpdate({ isStandingOrder: e.target.checked })} />
             <span className="text-xs text-[var(--color-ink-muted)]">Standing order</span>
@@ -299,7 +299,7 @@ function BillForm({
           </select>
         </label>
       )}
-      <BillIconPicker icon={icon} iconColor={iconColor} onChange={(patch) => {
+      <IconPickerButton icon={icon} iconColor={iconColor} onChange={(patch) => {
         if ('icon' in patch) setIcon(patch.icon)
         if (patch.iconColor) setIconColor(patch.iconColor)
       }} />
