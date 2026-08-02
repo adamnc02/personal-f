@@ -77,6 +77,7 @@ export type ScenarioActionType =
   | 'exclude_loan' // simulate as if a loan's monthly cost didn't count at all
   | 'loan_overpayment' // a recurring extra amount on top of a loan's normal payment
   | 'salary_change' // hypothetical new gross annual salary, for a chosen person
+  | 'savings_lump_sum' // one-off lump sum toward a savings goal
 
 export interface Scenario {
   id: string
@@ -88,8 +89,10 @@ export interface Scenario {
     type: ScenarioActionType
     label: string
     value: number // sale proceeds, purchase cost, extra/overpayment amount, new gross salary, or the computed monthly cost for new_bill/new_finance_agreement
-    linkedLoanId?: string
-    personId?: string // for 'salary_change' — whose salary this applies to (defaults to the viewer)
+    linkedLoanId?: string // single-loan target, or legacy data
+    linkedLoanIds?: string[] // ordered multi-loan target — a sale/lump sum cascades through these in order, clearing each as far as it can before moving to the next
+    personId?: string // for 'salary_change' and 'savings_lump_sum' — whose salary/goal this applies to (defaults to the viewer)
+    savingsEntryId?: string // for 'savings_lump_sum' — which of that person's savings goals it targets
     // Used by 'new_bill' and 'new_finance_agreement' — where the new cost sits and how it's split
     name?: string
     location?: BillLocation

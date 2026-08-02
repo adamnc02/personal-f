@@ -25,7 +25,7 @@ export function totalMonthlySavingsForPerson(person: Person, asOf: Date = new Da
   return round2(total)
 }
 
-function monthsUntil(targetDate: string, asOf: Date): number {
+export function monthsUntil(targetDate: string, asOf: Date = new Date()): number {
   const target = new Date(targetDate)
   return Math.max(
     1,

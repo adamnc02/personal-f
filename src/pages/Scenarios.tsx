@@ -20,11 +20,10 @@ const ACTION_LABELS: Record<ScenarioActionType, string> = {
   exclude_loan: "Exclude a loan (what if it just didn't count)",
   loan_overpayment: 'Regular extra payment on a loan',
   salary_change: 'Salary change',
+  savings_lump_sum: 'Lump sum toward a savings goal',
 }
 
-const NEEDS_LOAN: ScenarioActionType[] = ['pay_off_loan', 'exclude_loan', 'loan_overpayment']
-const NEEDS_VALUE: ScenarioActionType[] = ['sell_asset', 'pay_off_loan', 'new_bill', 'loan_overpayment', 'salary_change']
-const QUICK_FILL_LOAN: ScenarioActionType[] = ['pay_off_loan', 'sell_asset']
+const NEEDS_VALUE: ScenarioActionType[] = ['sell_asset', 'pay_off_loan', 'new_bill', 'loan_overpayment', 'salary_change', 'savings_lump_sum']
 const NEEDS_SPLIT: ScenarioActionType[] = ['new_bill', 'new_finance_agreement']
 
 const VALUE_LABELS: Partial<Record<ScenarioActionType, string>> = {
@@ -33,6 +32,7 @@ const VALUE_LABELS: Partial<Record<ScenarioActionType, string>> = {
   new_bill: 'Monthly cost (£)',
   loan_overpayment: 'Extra per month (£)',
   salary_change: 'New gross annual salary (£)',
+  savings_lump_sum: 'Lump sum (£)',
 }
 
 export function Scenarios() {
@@ -169,7 +169,12 @@ export function Scenarios() {
                     <div key={action.id} className="flex items-start justify-between text-sm gap-3">
                       <span className="text-[var(--color-ink-muted)]">
                         {action.name || ACTION_LABELS[action.type]}
-                        {action.linkedLoanId && ` → ${data.loans.find((l) => l.id === action.linkedLoanId)?.name ?? 'loan'}`}
+                        {(() => {
+                          const targets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
+                          if (targets.length === 0) return null
+                          const names = targets.map((id) => data.loans.find((l) => l.id === id)?.name ?? 'loan')
+                          return ` → ${names.join(' → ')}`
+                        })()}
                         {action.type === 'new_finance_agreement' && action.termMonths ? (
                           <span className="block text-xs text-[var(--color-ink-faint)] mt-0.5">
                             £{(action.borrowAmount ?? 0).toFixed(2)} at {action.aprPercent ?? 0}% APR over {action.termMonths}mo · total £
@@ -252,20 +257,35 @@ function ConvertButtons({ action, people }: { action: Scenario['actions'][number
 function ImpactSummary({ impact, viewerId }: { impact: ScenarioImpact; viewerId?: string }) {
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-[var(--color-ink)]">One-off cash impact</span>
-          <span className="font-mono font-semibold" style={{ color: impact.oneOffCashImpact >= 0 ? 'var(--color-positive)' : 'var(--color-negative)' }}>
-            {impact.oneOffCashImpact >= 0 ? '+' : '-'}£{Math.abs(impact.oneOffCashImpact).toFixed(2)}
-          </span>
+      {impact.savingsImpacts.map((si, i) => (
+        <div key={i} className="rounded-xl p-3" style={{ background: 'var(--color-bg-elevated)' }}>
+          <p className="text-sm font-medium text-[var(--color-ink)] mb-2">
+            {si.personName}'s {si.goalName}
+          </p>
+          <div className="flex justify-between text-xs text-[var(--color-ink-muted)]">
+            <span>Lump sum</span>
+            <span className="font-mono">£{si.lumpSumApplied.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-[var(--color-ink-muted)]">
+            <span>Remaining now</span>
+            <span className="font-mono">£{si.originalRemaining.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-[var(--color-ink-muted)]">
+            <span>Remaining after</span>
+            <span className="font-mono">£{si.newRemaining.toFixed(2)}</span>
+          </div>
+          {si.hasTargetDate ? (
+            si.monthsSaved > 0 && (
+              <div className="flex justify-between text-xs mt-1" style={{ color: 'var(--color-positive)' }}>
+                <span>Time saved</span>
+                <span className="font-mono">{si.monthsSaved} month{si.monthsSaved === 1 ? '' : 's'}</span>
+              </div>
+            )
+          ) : (
+            <p className="text-[11px] text-[var(--color-ink-faint)] mt-1">No target date set, so time saved can't be calculated.</p>
+          )}
         </div>
-        <p className="text-[11px] text-[var(--color-ink-faint)] mt-1 leading-relaxed">
-          A single payment, not a monthly change — whatever's left from your sell/buy actions after their own
-          linked loan is covered. If one sale is split across several actions to pay off more than one loan, each
-          action's leftover is calculated on its own, so double-check the numbers add up to what you actually
-          expect to walk away with.
-        </p>
-      </div>
+      ))}
 
       {impact.salaryChangeImpact && (
         <div className="rounded-xl p-3" style={{ background: 'var(--color-bg-elevated)' }}>
@@ -368,6 +388,19 @@ function ImpactSummary({ impact, viewerId }: { impact: ScenarioImpact; viewerId?
             </span>
           </div>
         )}
+
+        <div className="h-px my-2" style={{ background: 'var(--color-track)' }} />
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-[var(--color-ink-muted)]">One-off cash impact</span>
+          <span className="font-mono font-semibold" style={{ color: impact.oneOffCashImpact >= 0 ? 'var(--color-positive)' : 'var(--color-negative)' }}>
+            {impact.oneOffCashImpact >= 0 ? '+' : '-'}£{Math.abs(impact.oneOffCashImpact).toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-[var(--color-ink-faint)] mt-1 leading-relaxed">
+          A single payment, not a monthly change, so it's kept separate from the figures above — whatever's left
+          after every linked loan target and savings goal in this scenario has taken what it needs.
+        </p>
       </div>
     </div>
   )
@@ -394,16 +427,19 @@ function ScenarioForm({
 
   function addAction() {
     // If the previous action was a loan payoff/sale, default the new one's
-    // value to whatever was left over after that loan was cleared — you can
-    // still adjust it manually.
+    // value to whatever was left over after its target(s) were cleared —
+    // you can still adjust it manually. With a single action now able to
+    // cascade through several loans itself (see the loan picker below),
+    // this mostly matters for chaining a genuinely separate action.
     const prev = actions[actions.length - 1]
     let defaultValue = 0
-    if (prev && (prev.type === 'sell_asset' || prev.type === 'pay_off_loan') && prev.linkedLoanId && prev.value > 0) {
-      const prevLoan = data.loans.find((l) => l.id === prev.linkedLoanId)
-      if (prevLoan) {
-        const remaining = summarizeLoan(prevLoan).remaining
-        defaultValue = Math.max(0, round2(prev.value - remaining))
-      }
+    if (prev && (prev.type === 'sell_asset' || prev.type === 'pay_off_loan') && prev.value > 0) {
+      const targets = prev.linkedLoanIds?.length ? prev.linkedLoanIds : prev.linkedLoanId ? [prev.linkedLoanId] : []
+      const totalNeeded = targets.reduce((sum, id) => {
+        const loan = data.loans.find((l) => l.id === id)
+        return sum + (loan ? summarizeLoan(loan).remaining : 0)
+      }, 0)
+      if (targets.length > 0) defaultValue = Math.max(0, round2(prev.value - totalNeeded))
     }
     setActions((p) => [...p, { id: nanoid(6), type: 'sell_asset', label: '', value: defaultValue }])
   }
@@ -421,11 +457,16 @@ function ScenarioForm({
       </label>
 
       {actions.map((action, i) => {
-        const linkedLoan = data.loans.find((l) => l.id === action.linkedLoanId)
-        const showFullPayoffHint = linkedLoan && QUICK_FILL_LOAN.includes(action.type)
-        const remaining = linkedLoan ? summarizeLoan(linkedLoan).remaining : 0
-        const showLoanPicker = NEEDS_LOAN.includes(action.type) || action.type === 'sell_asset'
-        const showPersonPicker = action.type === 'salary_change'
+        const currentTargets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
+        const totalNeededForTargets = currentTargets.reduce((sum, id) => {
+          const loan = data.loans.find((l) => l.id === id)
+          return sum + (loan ? summarizeLoan(loan).remaining : 0)
+        }, 0)
+        const showMultiLoanPicker = action.type === 'sell_asset' || action.type === 'pay_off_loan'
+        const showSingleLoanPicker = action.type === 'exclude_loan' || action.type === 'loan_overpayment'
+        const showFullPayoffHint = showMultiLoanPicker && currentTargets.length > 0
+        const showPersonPicker = action.type === 'salary_change' || action.type === 'savings_lump_sum'
+        const showSavingsPicker = action.type === 'savings_lump_sum'
         const showValue = NEEDS_VALUE.includes(action.type)
         const showSplit = NEEDS_SPLIT.includes(action.type)
         const showFinanceInputs = action.type === 'new_finance_agreement'
@@ -470,7 +511,7 @@ function ScenarioForm({
                 placeholder={VALUE_LABELS[action.type] ?? 'Value (£)'}
                 value={action.value || ''}
                 onChange={(e) => updateAction({ value: Number(e.target.value) })}
-                className={`bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm font-mono ${showLoanPicker || showPersonPicker ? '' : 'col-span-2'}`}
+                className={`bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm font-mono ${showMultiLoanPicker || showSingleLoanPicker || showPersonPicker ? '' : 'col-span-2'}`}
               />
             )}
 
@@ -531,7 +572,7 @@ function ScenarioForm({
             {showPersonPicker && (
               <select
                 value={action.personId || people[0]?.id || ''}
-                onChange={(e) => updateAction({ personId: e.target.value })}
+                onChange={(e) => updateAction({ personId: e.target.value, savingsEntryId: undefined })}
                 className="bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
               >
                 {people.map((p) => (
@@ -542,13 +583,40 @@ function ScenarioForm({
               </select>
             )}
 
-            {showLoanPicker && (
+            {showSavingsPicker &&
+              (() => {
+                const targetPersonId = action.personId || people[0]?.id || ''
+                const goals = data.people.find((p) => p.id === targetPersonId)?.savingsEntries.filter((e) => e.type === 'goal') ?? []
+                if (goals.length === 0) {
+                  return (
+                    <p className="col-span-2 text-xs text-[var(--color-ink-faint)]">
+                      No savings goals for this person yet — add one on the Salary tab first.
+                    </p>
+                  )
+                }
+                return (
+                  <select
+                    value={action.savingsEntryId ?? ''}
+                    onChange={(e) => updateAction({ savingsEntryId: e.target.value })}
+                    className="col-span-2 bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
+                  >
+                    <option value="">Choose a savings goal…</option>
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name || 'Unnamed goal'}
+                      </option>
+                    ))}
+                  </select>
+                )
+              })()}
+
+            {showSingleLoanPicker && (
               <select
                 value={action.linkedLoanId ?? ''}
                 onChange={(e) => updateAction({ linkedLoanId: e.target.value || undefined })}
                 className="bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
               >
-                <option value="">{action.type === 'sell_asset' ? 'No linked loan' : 'Choose a loan…'}</option>
+                <option value="">Choose a loan…</option>
                 {data.loans.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -557,13 +625,63 @@ function ScenarioForm({
               </select>
             )}
 
+            {showMultiLoanPicker && (
+              <div className="col-span-2 flex flex-col gap-1.5">
+                {currentTargets.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {currentTargets.map((loanId, idx) => {
+                      const loan = data.loans.find((l) => l.id === loanId)
+                      return (
+                        <div key={loanId} className="flex items-center justify-between text-xs rounded-lg px-2 py-1.5" style={{ background: 'var(--color-track)' }}>
+                          <span className="text-[var(--color-ink)]">
+                            {idx + 1}. {loan?.name ?? 'Unknown loan'}
+                          </span>
+                          <button
+                            onClick={() => updateAction({ linkedLoanIds: currentTargets.filter((id) => id !== loanId), linkedLoanId: undefined })}
+                            className="text-[var(--color-ink-faint)]"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    updateAction({ linkedLoanIds: [...currentTargets, e.target.value], linkedLoanId: undefined })
+                  }}
+                  className="bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
+                >
+                  <option value="">
+                    {currentTargets.length === 0 ? 'No linked loan (optional)' : '+ Add another loan target…'}
+                  </option>
+                  {data.loans
+                    .filter((l) => !currentTargets.includes(l.id))
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                </select>
+                {currentTargets.length > 1 && (
+                  <p className="text-[11px] text-[var(--color-ink-faint)]">
+                    Applied in this order — each loan is cleared as far as possible before moving to the next.
+                  </p>
+                )}
+              </div>
+            )}
+
             {showFullPayoffHint && (
               <button
-                onClick={() => updateAction({ value: remaining })}
+                onClick={() => updateAction({ value: totalNeededForTargets })}
                 className="col-span-2 text-xs font-medium text-left mt-1"
                 style={{ color: 'var(--color-coral)' }}
               >
-                Use loan's remaining balance (£{remaining.toFixed(2)}) — clear it completely
+                Use total needed to clear {currentTargets.length > 1 ? 'all listed loans' : "the loan's remaining balance"} (£
+                {totalNeededForTargets.toFixed(2)})
               </button>
             )}
 

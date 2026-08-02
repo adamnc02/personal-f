@@ -3,6 +3,7 @@ import { useAppData } from '../context/AppContext'
 import { SwipeCards } from '../components/SwipeCards'
 import { BankCard } from '../components/BankCard'
 import { BillsTable } from '../components/BillsTable'
+import { BillsCategoryView } from '../components/BillsCategoryView'
 import { ProgressRing } from '../components/ProgressRing'
 import { calculateNetSalary } from '../lib/tax'
 import { billsByLocation, personalBillsTotal, jointContributionForPerson, standingOrderTotalForPerson, totalOutgoingsForPerson, jointAccountTotal } from '../lib/bills'
@@ -15,6 +16,7 @@ import type { Bill } from '../types/models'
 export function Dashboard() {
   const { data } = useAppData()
   const [cardIndex, setCardIndex] = useState(0)
+  const [billsView, setBillsView] = useState<'list' | 'category'>('list')
 
   const me = data.people.find((p) => p.id === data.primaryPersonId) ?? data.people[0]
   const otherPeople = data.people.filter((p) => p.id !== me?.id)
@@ -40,6 +42,16 @@ export function Dashboard() {
   const standingOrderTotal = standingOrderTotalForPerson(allBills, me.id)
   const fullOutgoings = totalOutgoingsForPerson(allBills, me.id, data.people)
   const jointTotal = jointAccountTotal(allBills)
+
+  // Aggregate across every loan for the standalone "Total Debt" ring —
+  // summed from each loan's own repaid-to-date and original amount, not
+  // an average of their individual percentages, so a large loan properly
+  // outweighs a small one in the combined figure.
+  const loanSummaries = data.loans.map((loan) => summarizeLoan(loan))
+  const totalDebtRemaining = round2(loanSummaries.reduce((sum, s) => sum + s.remaining, 0))
+  const totalDebtOriginal = round2(data.loans.reduce((sum, l) => sum + l.totalAmount, 0))
+  const totalDebtRepaid = round2(loanSummaries.reduce((sum, s) => sum + s.repaidToDate, 0))
+  const totalDebtPercentRepaid = totalDebtOriginal > 0 ? Math.min(100, (totalDebtRepaid / totalDebtOriginal) * 100) : 0
 
   // A synthetic row representing this person's total stake in the joint account,
   // shown alongside their personal bills so the table total matches their
@@ -75,7 +87,7 @@ export function Dashboard() {
           </div>
         </BankCard>
 
-        <BankCard variant="light" bankLabel={me.name.toLowerCase()} accountLabel="joint">
+        <BankCard variant="light" bankLabel={me.name} accountLabel="Joint">
           <div className="mt-6 space-y-1.5">
             <CardRow label="Bills" value={jointTotal} />
             {[me, ...otherPeople].map((p) => (
@@ -85,8 +97,38 @@ export function Dashboard() {
         </BankCard>
       </SwipeCards>
 
-      <CollapsibleSection title={cardIndex === 0 ? 'Bills' : 'Joint Bills'} className="mt-8">
-        {cardIndex === 0 ? <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} /> : <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />}
+      <CollapsibleSection
+        title={cardIndex === 0 ? 'Bills' : 'Joint Bills'}
+        className="mt-8"
+        headerExtra={
+          <div className="flex gap-1 rounded-full p-0.5" style={{ background: 'var(--color-surface)' }}>
+            {(['list', 'category'] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setBillsView(view)}
+                className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide capitalize transition-colors"
+                style={{
+                  background: billsView === view ? 'var(--color-coral)' : 'transparent',
+                  color: billsView === view ? '#fff' : 'var(--color-ink-muted)',
+                }}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        {billsView === 'list' ? (
+          cardIndex === 0 ? (
+            <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} />
+          ) : (
+            <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />
+          )
+        ) : cardIndex === 0 ? (
+          <BillsCategoryView bills={personalTableRows} total={fullOutgoings} />
+        ) : (
+          <BillsCategoryView bills={jointBills} total={jointTotal} />
+        )}
       </CollapsibleSection>
 
       {cardIndex === 0 && (
@@ -113,6 +155,17 @@ export function Dashboard() {
             })}
           </div>
         </CollapsibleSection>
+      )}
+
+      {data.loans.length > 1 && (
+        <div className="mt-10 flex flex-col items-center">
+          <ProgressRing
+            percent={totalDebtPercentRepaid}
+            value={`£${totalDebtRemaining.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            label="Total Debt Remaining"
+            icon={<Landmark size={56} strokeWidth={1.25} />}
+          />
+        </div>
       )}
     </div>
   )
@@ -158,4 +211,8 @@ function EmptyState() {
       </p>
     </div>
   )
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }

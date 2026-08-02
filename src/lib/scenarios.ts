@@ -2,6 +2,7 @@ import type { AppData, Bill, Loan, Scenario } from '../types/models'
 import { summarizeLoan, currentLoanMonthlyCost } from './loans'
 import { costForPerson } from './bills'
 import { calculateNetSalary } from './tax'
+import { monthlyAmountForEntry, monthsUntil } from './savings'
 
 export interface LoanImpact {
   loanId: string
@@ -27,6 +28,16 @@ export interface SalaryChangeImpact {
   delta: number
 }
 
+export interface SavingsLumpSumImpact {
+  personName: string
+  goalName: string
+  lumpSumApplied: number
+  originalRemaining: number
+  newRemaining: number
+  monthsSaved: number
+  hasTargetDate: boolean
+}
+
 export interface ScenarioImpact {
   oneOffCashImpact: number // one-time proceeds/costs, including any lump sum beyond what a loan needed
   monthlyAvailableBefore: number
@@ -34,6 +45,7 @@ export interface ScenarioImpact {
   monthlyImpact: number // recurring monthly change, from loans, new/cancelled costs, or a salary change
   loanImpacts: LoanImpact[]
   salaryChangeImpact: SalaryChangeImpact | null
+  savingsImpacts: SavingsLumpSumImpact[]
 }
 
 /**
@@ -49,19 +61,62 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
   const loanImpacts: LoanImpact[] = []
   let salaryChangeImpact: SalaryChangeImpact | null = null
 
-  const loanLumpSums = new Map<string, number>()
   const loanExclusions = new Set<string>()
   const loanOverpayments = new Map<string, number>()
+  const savingsLumpSums = new Map<string, number>() // key: `${personId}:${entryId}`
+
+  // Running balance per loan as actions are applied in order, so a second
+  // action targeting the same loan sees what the first one already used —
+  // and so a single sale cascading through several loans in priority order
+  // only spends each pound once, rather than every target independently
+  // "seeing" the loan's full original balance.
+  const loanWorkingRemaining = new Map<string, number>()
+  const loanLumpSumsApplied = new Map<string, number>()
+
+  function workingRemaining(loanId: string): number {
+    if (!loanWorkingRemaining.has(loanId)) {
+      const loan = data.loans.find((l) => l.id === loanId)
+      loanWorkingRemaining.set(loanId, loan ? summarizeLoan(loan).remaining : 0)
+    }
+    return loanWorkingRemaining.get(loanId)!
+  }
 
   for (const action of scenario.actions) {
-    if (action.type === 'sell_asset') {
-      if (action.linkedLoanId) {
-        loanLumpSums.set(action.linkedLoanId, (loanLumpSums.get(action.linkedLoanId) ?? 0) + action.value)
-      } else {
-        oneOffCashImpact += action.value
+    if (action.type === 'sell_asset' || action.type === 'pay_off_loan') {
+      const targets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
+
+      if (targets.length === 0) {
+        // Unlinked sell_asset is just cash in hand. pay_off_loan with nothing
+        // selected does nothing (the form requires a target to save it anyway).
+        if (action.type === 'sell_asset') oneOffCashImpact += action.value
+        continue
       }
-    } else if (action.type === 'pay_off_loan' && action.linkedLoanId) {
-      loanLumpSums.set(action.linkedLoanId, (loanLumpSums.get(action.linkedLoanId) ?? 0) + action.value)
+
+      // Walk the targets in order, clearing each as far as this action's
+      // value allows before moving to the next. Whatever's left after the
+      // last target is genuine one-off cash — not double-counted against
+      // what any target already used.
+      let pool = action.value
+      for (const loanId of targets) {
+        if (pool <= 0) break
+        const remaining = workingRemaining(loanId)
+        const applied = round2(Math.min(pool, remaining))
+        // Record every target this cascade actually reached, even one that
+        // needed £0 (e.g. it was already fully paid off) — the user
+        // explicitly chose it, so it should still show up as "£0 applied,
+        // already clear" rather than silently vanishing from the results.
+        loanWorkingRemaining.set(loanId, round2(remaining - applied))
+        loanLumpSumsApplied.set(loanId, round2((loanLumpSumsApplied.get(loanId) ?? 0) + applied))
+        pool = round2(pool - applied)
+      }
+      oneOffCashImpact += pool
+    } else if (action.type === 'savings_lump_sum' && action.savingsEntryId) {
+      const targetPersonId = action.personId || personId
+      const key = `${targetPersonId}:${action.savingsEntryId}`
+      savingsLumpSums.set(key, (savingsLumpSums.get(key) ?? 0) + action.value)
+      // Putting money into savings is spending it, same as buying something —
+      // it leaves whatever one-off cash this scenario generated.
+      oneOffCashImpact -= action.value
     } else if (action.type === 'new_bill' || action.type === 'new_finance_agreement') {
       // Both are ongoing monthly costs — a simple new bill, or a finance
       // agreement's computed monthly payment. Not one-off, and only counts
@@ -98,17 +153,12 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
     }
   }
 
-  // --- Lump sum payoffs ---
-  for (const [loanId, requestedLumpSum] of loanLumpSums.entries()) {
+  // --- Lump sum payoffs (now already correctly sequenced/clamped above) ---
+  for (const [loanId, lumpSum] of loanLumpSumsApplied.entries()) {
     const loan = data.loans.find((l) => l.id === loanId)
     if (!loan) continue
 
     const original = summarizeLoan(loan)
-    // Only as much as the loan actually needs goes toward it — any extra is
-    // real cash left in your pocket, not swallowed by an overpayment.
-    const lumpSum = Math.min(requestedLumpSum, original.remaining)
-    oneOffCashImpact += requestedLumpSum - lumpSum
-
     const newRemaining = round2(Math.max(0, original.remaining - lumpSum))
     const fullyPaidOff = newRemaining <= 0
 
@@ -198,6 +248,40 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
     })
   }
 
+  // --- Savings lump sums: how much sooner a goal is hit ---
+  const savingsImpacts: SavingsLumpSumImpact[] = []
+  for (const [key, lumpSum] of savingsLumpSums.entries()) {
+    const [targetPersonId, entryId] = key.split(':')
+    const person = data.people.find((p) => p.id === targetPersonId)
+    const entry = person?.savingsEntries.find((e) => e.id === entryId)
+    if (!person || !entry) continue
+
+    const originalRemaining = Math.max(0, (entry.targetAmount ?? 0) - (entry.currentAmount ?? 0))
+    const newRemaining = round2(Math.max(0, originalRemaining - lumpSum))
+    const hasTargetDate = Boolean(entry.targetDate)
+
+    let monthsSaved = 0
+    if (hasTargetDate) {
+      // Assume the same monthly contribution the goal was already relying on
+      // to hit its date — the lump sum just means fewer months are needed
+      // at that same rate, not a promise to save any faster afterward.
+      const monthlyRate = monthlyAmountForEntry(entry)
+      const originalMonths = monthsUntil(entry.targetDate!)
+      const newMonths = monthlyRate > 0 ? Math.ceil(newRemaining / monthlyRate) : 0
+      monthsSaved = Math.max(0, originalMonths - newMonths)
+    }
+
+    savingsImpacts.push({
+      personName: person.name,
+      goalName: entry.name || 'Unnamed goal',
+      lumpSumApplied: lumpSum,
+      originalRemaining,
+      newRemaining,
+      monthsSaved,
+      hasTargetDate,
+    })
+  }
+
   return {
     oneOffCashImpact: round2(oneOffCashImpact),
     monthlyAvailableBefore,
@@ -205,6 +289,7 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
     monthlyImpact: round2(monthlyImpact),
     loanImpacts,
     salaryChangeImpact,
+    savingsImpacts,
   }
 }
 

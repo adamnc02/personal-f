@@ -168,6 +168,50 @@ check('Merge: old joint bill not in import is gone (deletion handled)', mergedBi
 check('Merge: new joint bills from import present', mergedBills.filter((b) => b.location === 'joint').length, 2)
 check('Merge: total count = 1 personal + 2 new joint', mergedBills.length, 3)
 
+// ---- 9. Savings lump sum: reduces remaining and shows months saved ----
+const adamWithGoal: Person = {
+  ...people[0],
+  savingsEntries: [
+    { id: 'goal1', type: 'goal', name: 'House deposit', includeInSummary: false, targetAmount: 5000, currentAmount: 1000, targetDate: '2027-08-01' },
+  ],
+}
+const savingsData: AppData = { ...scenarioData, people: [adamWithGoal, people[1]], loans: [] }
+const savingsScenario: Scenario = {
+  id: 's4',
+  name: 'Lump sum to house deposit',
+  includeInCumulative: true,
+  actions: [{ id: 'a4', type: 'savings_lump_sum', label: '', value: 2000, personId: 'adam', savingsEntryId: 'goal1' }],
+}
+const savingsImpact = calculateScenarioImpact(savingsScenario, savingsData, 'adam', 1000)
+check('Savings lump sum reduces oneOffCashImpact (money spent into savings)', savingsImpact.oneOffCashImpact, -2000)
+check('Savings lump sum: newRemaining = 4000 - 2000', savingsImpact.savingsImpacts[0]?.newRemaining, 2000)
+check('Savings lump sum: months saved > 0 with a target date', savingsImpact.savingsImpacts[0]?.monthsSaved > 0, true)
+
+// ---- 10. Cascade fix: reproduces the exact reported bug ----
+// Sell for £15,000 across two loans (Monzo needs £7696.19, Car needs
+// £7453.78 — combined £15,149.97, MORE than the sale). Old behaviour
+// double-counted: showed +£7303.81 "leftover" that was also being spent on
+// the second loan. Correct behaviour: Car can't be fully cleared, and there
+// is truly nothing left over.
+const monzoLoan: Loan = { ...loan, id: 'monzo', totalAmount: 7696.19, monthlyPayment: 7696.19, firstPaymentDate: '2027-01-01' }
+const carLoan: Loan = { ...loan, id: 'car', totalAmount: 7453.78, monthlyPayment: 7453.78, firstPaymentDate: '2027-01-01' }
+const cascadeData: AppData = { ...scenarioData, loans: [monzoLoan, carLoan] }
+const cascadeScenario: Scenario = {
+  id: 'cascade',
+  name: 'Sell car',
+  includeInCumulative: true,
+  actions: [{ id: 'ca1', type: 'sell_asset', label: '', value: 15000, linkedLoanIds: ['monzo', 'car'] }],
+}
+const cascadeImpact = calculateScenarioImpact(cascadeScenario, cascadeData, 'adam', 1000)
+check('Cascade: Monzo (first target) fully paid off', cascadeImpact.loanImpacts.find((l) => l.loanId === 'monzo')?.fullyPaidOff, true)
+check('Cascade: Car (second target) NOT fully paid off — not enough money left', cascadeImpact.loanImpacts.find((l) => l.loanId === 'car')?.fullyPaidOff, false)
+check(
+  "Cascade: Car's remaining after = 7453.78 - (15000-7696.19) = 149.97",
+  cascadeImpact.loanImpacts.find((l) => l.loanId === 'car')?.newRemaining,
+  149.97
+)
+check('Cascade: NO leftover one-off cash — every pound was spoken for', cascadeImpact.oneOffCashImpact, 0)
+
 // ---- Summary ----
 console.log('\n' + (failures === 0 ? `All checks passed.` : `${failures} check(s) FAILED.`))
 process.exit(failures === 0 ? 0 : 1)
