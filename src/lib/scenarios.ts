@@ -83,7 +83,7 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
 
   for (const action of scenario.actions) {
     if (action.type === 'sell_asset' || action.type === 'pay_off_loan') {
-      const targets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
+      const targets = resolveLoanAllocations(action)
 
       if (targets.length === 0) {
         // Unlinked sell_asset is just cash in hand. pay_off_loan with nothing
@@ -93,18 +93,18 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
       }
 
       // Walk the targets in order, clearing each as far as this action's
-      // value allows before moving to the next. Whatever's left after the
+      // value allows before moving to the next. A target with a manual
+      // `amount` takes exactly that much (still capped to what's left in
+      // the pool and what the loan actually needs); one without an amount
+      // auto-takes whatever's left in the pool. Whatever's left after the
       // last target is genuine one-off cash — not double-counted against
       // what any target already used.
       let pool = action.value
-      for (const loanId of targets) {
+      for (const { loanId, amount } of targets) {
         if (pool <= 0) break
         const remaining = workingRemaining(loanId)
-        const applied = round2(Math.min(pool, remaining))
-        // Record every target this cascade actually reached, even one that
-        // needed £0 (e.g. it was already fully paid off) — the user
-        // explicitly chose it, so it should still show up as "£0 applied,
-        // already clear" rather than silently vanishing from the results.
+        const requested = amount != null ? amount : pool
+        const applied = round2(Math.min(requested, pool, remaining))
         loanWorkingRemaining.set(loanId, round2(remaining - applied))
         loanLumpSumsApplied.set(loanId, round2((loanLumpSumsApplied.get(loanId) ?? 0) + applied))
         pool = round2(pool - applied)
@@ -324,6 +324,15 @@ export function mergeScenarios(scenarios: Scenario[]): Scenario {
     includeInCumulative: false,
     actions: scenarios.flatMap((s) => s.actions),
   }
+}
+
+/** Reads an action's loan targets, supporting older saved-scenario field shapes from before per-target amounts existed. */
+export function resolveLoanAllocations(action: Scenario['actions'][number]): { loanId: string; amount?: number }[] {
+  if (action.loanAllocations?.length) return action.loanAllocations
+  const legacy = action as unknown as { linkedLoanIds?: string[] }
+  if (legacy.linkedLoanIds?.length) return legacy.linkedLoanIds.map((loanId) => ({ loanId }))
+  if (action.linkedLoanId) return [{ loanId: action.linkedLoanId }]
+  return []
 }
 
 function round2(n: number): number {

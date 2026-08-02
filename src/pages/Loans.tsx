@@ -6,6 +6,8 @@ import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Loan, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
+import { BillIcon } from '../components/BillIcon'
+import { BillIconPicker } from '../components/BillIconPicker'
 
 export function Loans() {
   const { data, addLoan, updateLoan, removeLoan } = useAppData()
@@ -62,14 +64,17 @@ export function Loans() {
           return (
             <div key={loan.id} className="rounded-2xl p-5" style={{ background: 'var(--color-surface)' }}>
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">{loan.name}</h2>
-                  <p className="text-xs text-[var(--color-ink-muted)] mt-0.5">
-                    £{summary.remaining.toFixed(2)} remaining · {summary.monthsRemaining} payment{summary.monthsRemaining === 1 ? '' : 's'} left
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: monthlyCost > 0 ? 'var(--color-ink-muted)' : 'var(--color-positive)' }}>
-                    {monthlyCost > 0 ? `£${monthlyCost.toFixed(2)}/month` : 'Paid off'}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <BillIcon bill={loan} />
+                  <div>
+                    <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">{loan.name}</h2>
+                    <p className="text-xs text-[var(--color-ink-muted)] mt-0.5">
+                      £{summary.remaining.toFixed(2)} remaining · {summary.monthsRemaining} payment{summary.monthsRemaining === 1 ? '' : 's'} left
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: monthlyCost > 0 ? 'var(--color-ink-muted)' : 'var(--color-positive)' }}>
+                      {monthlyCost > 0 ? `£${monthlyCost.toFixed(2)}/month` : 'Paid off'}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => removeLoan(loan.id)} className="text-[var(--color-ink-faint)]">
@@ -158,6 +163,12 @@ export function Loans() {
                   {summary.finalPaymentDate && (
                     <p className="col-span-2 text-xs text-[var(--color-ink-muted)]">Final payment: {summary.finalPaymentDate}</p>
                   )}
+
+                  <BillIconPicker
+                    icon={loan.icon}
+                    iconColor={loan.iconColor}
+                    onChange={(patch) => updateLoan(loan.id, patch)}
+                  />
                 </div>
               )}
             </div>
@@ -191,6 +202,8 @@ function NewLoanForm({
   const [ownerId, setOwnerId] = useState(initial?.ownerId || people[0]?.id || '')
   const [payee, setPayee] = useState(initial?.payee || people[0]?.id || '')
   const [payeeSharePercent, setPayeeSharePercent] = useState(initial?.payeeSharePercent ?? 50)
+  const [icon, setIcon] = useState(initial?.icon)
+  const [iconColor, setIconColor] = useState(initial?.iconColor)
 
   return (
     <div className="rounded-2xl p-4 mb-6 flex flex-col gap-3" style={{ background: 'var(--color-surface)' }}>
@@ -231,6 +244,15 @@ function NewLoanForm({
         </label>
       )}
 
+      <BillIconPicker
+        icon={icon}
+        iconColor={iconColor}
+        onChange={(patch) => {
+          if ('icon' in patch) setIcon(patch.icon)
+          if (patch.iconColor) setIconColor(patch.iconColor)
+        }}
+      />
+
       <div className="flex gap-2 justify-end mt-1">
         <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm text-[var(--color-ink-muted)]">
           Cancel
@@ -247,6 +269,8 @@ function NewLoanForm({
               ownerId: location === 'personal' ? ownerId : '',
               payee: location === 'joint' ? payee : '',
               payeeSharePercent: location === 'joint' ? payeeSharePercent : 100,
+              icon,
+              iconColor,
             })
           }}
           className="px-3 py-1.5 rounded-lg text-sm font-medium"

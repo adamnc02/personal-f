@@ -215,6 +215,8 @@ export function parseBillsJson(json: string, people: { id: string; name: string 
       category: (bill.category as string) ?? 'Uncategorized',
       ownerId,
       isStandingOrder: (bill.isStandingOrder as boolean) ?? true,
+      icon: bill.icon as string | undefined,
+      iconColor: bill.iconColor as string | undefined,
     } as Bill
   })
 }

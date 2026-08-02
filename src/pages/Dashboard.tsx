@@ -11,6 +11,7 @@ import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Landmark } from 'lucide-react'
+import { BILL_ICONS, DEFAULT_ICON_COLOR } from '../lib/billIcons'
 import type { Bill } from '../types/models'
 
 export function Dashboard() {
@@ -143,13 +144,15 @@ export function Dashboard() {
           <div className="flex flex-col items-center gap-10">
             {data.loans.map((loan) => {
               const summary = summarizeLoan(loan)
+              const RingIcon = (loan.icon && BILL_ICONS[loan.icon]) || Landmark
+              const ringIconColor = loan.icon ? loan.iconColor || DEFAULT_ICON_COLOR : undefined
               return (
                 <ProgressRing
                   key={loan.id}
                   percent={summary.percentRepaid}
                   value={`£${summary.remaining.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   label={`${loan.name} Remaining`}
-                  icon={<Landmark size={56} strokeWidth={1.25} />}
+                  icon={<RingIcon size={56} strokeWidth={1.25} color={ringIconColor} />}
                 />
               )
             })}

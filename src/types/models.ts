@@ -45,6 +45,8 @@ export interface Bill {
   category: string
   ownerId: string // whose "personal" account it belongs to when location = 'personal'
   isStandingOrder: boolean
+  icon?: string // key into the built-in icon library, see lib/billIcons.ts
+  iconColor?: string // hex color for the icon
 }
 
 export interface Loan {
@@ -53,7 +55,8 @@ export interface Loan {
   firstPaymentDate: string // ISO date
   totalAmount: number
   monthlyPayment: number
-  icon?: string
+  icon?: string // key into the built-in icon library, see lib/billIcons.ts
+  iconColor?: string // hex color for the icon
   // Loans behave like an automatic recurring bill: their current monthly
   // payment counts toward personal/joint totals using the same split rules
   // as a Bill, without needing a separate duplicate bill entry.
@@ -89,8 +92,8 @@ export interface Scenario {
     type: ScenarioActionType
     label: string
     value: number // sale proceeds, purchase cost, extra/overpayment amount, new gross salary, or the computed monthly cost for new_bill/new_finance_agreement
-    linkedLoanId?: string // single-loan target, or legacy data
-    linkedLoanIds?: string[] // ordered multi-loan target — a sale/lump sum cascades through these in order, clearing each as far as it can before moving to the next
+    linkedLoanId?: string // single-loan target for exclude_loan/loan_overpayment, or legacy sell_asset/pay_off_loan data
+    loanAllocations?: { loanId: string; amount?: number }[] // ordered multi-loan target for sell_asset/pay_off_loan. Cascades in order, clearing each as far as possible; `amount` omitted means "auto — take whatever's left in the pool", set means "exactly this much, no more"
     personId?: string // for 'salary_change' and 'savings_lump_sum' — whose salary/goal this applies to (defaults to the viewer)
     savingsEntryId?: string // for 'savings_lump_sum' — which of that person's savings goals it targets
     // Used by 'new_bill' and 'new_finance_agreement' — where the new cost sits and how it's split

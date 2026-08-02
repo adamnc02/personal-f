@@ -212,6 +212,32 @@ check(
 )
 check('Cascade: NO leftover one-off cash — every pound was spoken for', cascadeImpact.oneOffCashImpact, 0)
 
+// ---- 11. Manual per-target amount override ----
+// £15,000 sale, explicitly send only £5,000 to Monzo (not its full £7696.19
+// need) and let Car auto-take the rest.
+const overrideScenario: Scenario = {
+  id: 'override',
+  name: 'Sell car, manual split',
+  includeInCumulative: true,
+  actions: [
+    {
+      id: 'ov1',
+      type: 'sell_asset',
+      label: '',
+      value: 15000,
+      loanAllocations: [
+        { loanId: 'monzo', amount: 5000 },
+        { loanId: 'car' }, // auto — takes whatever's left
+      ],
+    },
+  ],
+}
+const overrideImpact = calculateScenarioImpact(overrideScenario, cascadeData, 'adam', 1000)
+check('Manual override: Monzo gets exactly the specified £5000, not its full need', overrideImpact.loanImpacts.find((l) => l.loanId === 'monzo')?.lumpSumApplied, 5000)
+check('Manual override: Car auto-takes the remaining £10000 pool (capped to its own £7453.78 need)', overrideImpact.loanImpacts.find((l) => l.loanId === 'car')?.lumpSumApplied, 7453.78)
+check('Manual override: Car fully paid off since 10000 pool exceeds its need', overrideImpact.loanImpacts.find((l) => l.loanId === 'car')?.fullyPaidOff, true)
+check('Manual override: leftover cash = 15000 - 5000 - 7453.78', overrideImpact.oneOffCashImpact, 15000 - 5000 - 7453.78)
+
 // ---- Summary ----
 console.log('\n' + (failures === 0 ? `All checks passed.` : `${failures} check(s) FAILED.`))
 process.exit(failures === 0 ? 0 : 1)

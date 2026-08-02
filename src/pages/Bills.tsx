@@ -6,6 +6,8 @@ import { Plus, Trash2, Download, Upload } from 'lucide-react'
 import type { Bill, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
+import { BillIcon } from '../components/BillIcon'
+import { BillIconPicker } from '../components/BillIconPicker'
 
 export function Bills() {
   const { data, addBill, updateBill, removeBill, replaceBills } = useAppData()
@@ -160,11 +162,14 @@ function BillRow({
   return (
     <div className="rounded-xl px-4 py-3" style={{ background: 'var(--color-surface)' }}>
       <div className="flex items-center justify-between cursor-pointer" onClick={() => setOpen(!open)}>
-        <div>
-          <p className="font-body text-sm text-[var(--color-ink)]">{bill.name}</p>
-          <p className="text-xs text-[var(--color-ink-faint)]">
-            {bill.location === 'joint' ? 'Joint' : 'Personal'} · Due day {bill.dueDay}
-          </p>
+        <div className="flex items-center gap-2">
+          <BillIcon bill={bill} />
+          <div>
+            <p className="font-body text-sm text-[var(--color-ink)]">{bill.name}</p>
+            <p className="text-xs text-[var(--color-ink-faint)]">
+              {bill.location === 'joint' ? 'Joint' : 'Personal'} · Due day {bill.dueDay}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm text-[var(--color-ink)]">£{bill.cost.toFixed(2)}</span>
@@ -224,6 +229,7 @@ function BillRow({
               </select>
             </label>
           )}
+          <BillIconPicker icon={bill.icon} iconColor={bill.iconColor} onChange={(patch) => onUpdate(patch)} />
           <label className="flex items-center gap-2 col-span-2 mt-1">
             <input type="checkbox" checked={bill.isStandingOrder} onChange={(e) => onUpdate({ isStandingOrder: e.target.checked })} />
             <span className="text-xs text-[var(--color-ink-muted)]">Standing order</span>
@@ -253,6 +259,8 @@ function BillForm({
   const [payeeSharePercent, setPayeeSharePercent] = useState(initial?.payeeSharePercent ?? 50)
   const [ownerId, setOwnerId] = useState(initial?.ownerId || people[0]?.id || '')
   const [category, setCategory] = useState(initial?.category ?? '')
+  const [icon, setIcon] = useState(initial?.icon)
+  const [iconColor, setIconColor] = useState(initial?.iconColor)
 
   return (
     <div className="rounded-2xl p-4 mb-4 flex flex-col gap-3" style={{ background: 'var(--color-surface)' }}>
@@ -291,6 +299,10 @@ function BillForm({
           </select>
         </label>
       )}
+      <BillIconPicker icon={icon} iconColor={iconColor} onChange={(patch) => {
+        if ('icon' in patch) setIcon(patch.icon)
+        if (patch.iconColor) setIconColor(patch.iconColor)
+      }} />
       <div className="flex gap-2 justify-end mt-1">
         <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm text-[var(--color-ink-muted)]">
           Cancel
@@ -308,6 +320,8 @@ function BillForm({
               category: category || 'Uncategorized',
               ownerId: location === 'personal' ? ownerId : '',
               isStandingOrder: true,
+              icon,
+              iconColor,
             })
           }}
           className="px-3 py-1.5 rounded-lg text-sm font-medium"

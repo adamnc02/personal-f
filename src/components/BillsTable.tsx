@@ -1,5 +1,6 @@
 import type { Bill, Person } from '../types/models'
 import { jointSplitLabel } from '../lib/bills'
+import { BillIcon } from './BillIcon'
 
 function ordinal(n: number): string {
   if (n <= 0) return 'Monthly'
@@ -23,12 +24,15 @@ export function BillsTable({ bills, people, showSplit, total }: BillsTableProps)
       <div className="divide-y" style={{ borderColor: 'var(--color-track)' }}>
         {sorted.map((bill) => (
           <div key={bill.id} className="flex items-center justify-between py-3">
-            <div className="flex flex-col">
-              <span className="font-body text-[15px] text-[var(--color-ink)]">{bill.name}</span>
-              <span className="font-mono text-xs text-[var(--color-ink-faint)]">
-                {ordinal(bill.dueDay)}
-                {showSplit ? ` · ${jointSplitLabel(bill, people)}` : ''}
-              </span>
+            <div className="flex items-center gap-2">
+              <BillIcon bill={bill} />
+              <div className="flex flex-col">
+                <span className="font-body text-[15px] text-[var(--color-ink)]">{bill.name}</span>
+                <span className="font-mono text-xs text-[var(--color-ink-faint)]">
+                  {ordinal(bill.dueDay)}
+                  {showSplit ? ` · ${jointSplitLabel(bill, people)}` : ''}
+                </span>
+              </div>
             </div>
             <span className="font-mono text-[15px] text-[var(--color-ink)] tabular-nums">£{bill.cost.toFixed(2)}</span>
           </div>

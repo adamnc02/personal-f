@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppContext'
-import { calculateScenarioImpact, mergeScenarios, type ScenarioImpact } from '../lib/scenarios'
+import { calculateScenarioImpact, mergeScenarios, resolveLoanAllocations, type ScenarioImpact } from '../lib/scenarios'
 import { calculateNetSalary } from '../lib/tax'
 import { personalBillsTotal, jointContributionForPerson } from '../lib/bills'
 import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
@@ -170,10 +170,13 @@ export function Scenarios() {
                       <span className="text-[var(--color-ink-muted)]">
                         {action.name || ACTION_LABELS[action.type]}
                         {(() => {
-                          const targets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
+                          const targets = resolveLoanAllocations(action)
                           if (targets.length === 0) return null
-                          const names = targets.map((id) => data.loans.find((l) => l.id === id)?.name ?? 'loan')
-                          return ` → ${names.join(' → ')}`
+                          const parts = targets.map((t) => {
+                            const loanName = data.loans.find((l) => l.id === t.loanId)?.name ?? 'loan'
+                            return t.amount != null ? `${loanName} (£${t.amount.toFixed(2)})` : loanName
+                          })
+                          return ` → ${parts.join(' → ')}`
                         })()}
                         {action.type === 'new_finance_agreement' && action.termMonths ? (
                           <span className="block text-xs text-[var(--color-ink-faint)] mt-0.5">
@@ -420,6 +423,7 @@ function ScenarioForm({
   const { data } = useAppData()
   const [name, setName] = useState(initial?.name ?? '')
   const [actions, setActions] = useState<Scenario['actions']>(initial?.actions ?? [])
+  const hasAnySavingsGoal = data.people.some((p) => p.savingsEntries.some((e) => e.type === 'goal'))
 
   function round2(n: number): number {
     return Math.round(n * 100) / 100
@@ -434,9 +438,10 @@ function ScenarioForm({
     const prev = actions[actions.length - 1]
     let defaultValue = 0
     if (prev && (prev.type === 'sell_asset' || prev.type === 'pay_off_loan') && prev.value > 0) {
-      const targets = prev.linkedLoanIds?.length ? prev.linkedLoanIds : prev.linkedLoanId ? [prev.linkedLoanId] : []
-      const totalNeeded = targets.reduce((sum, id) => {
-        const loan = data.loans.find((l) => l.id === id)
+      const targets = resolveLoanAllocations(prev)
+      const totalNeeded = targets.reduce((sum, t) => {
+        if (t.amount != null) return sum + t.amount // a manual override takes exactly that much, not the loan's full balance
+        const loan = data.loans.find((l) => l.id === t.loanId)
         return sum + (loan ? summarizeLoan(loan).remaining : 0)
       }, 0)
       if (targets.length > 0) defaultValue = Math.max(0, round2(prev.value - totalNeeded))
@@ -457,9 +462,10 @@ function ScenarioForm({
       </label>
 
       {actions.map((action, i) => {
-        const currentTargets = action.linkedLoanIds?.length ? action.linkedLoanIds : action.linkedLoanId ? [action.linkedLoanId] : []
-        const totalNeededForTargets = currentTargets.reduce((sum, id) => {
-          const loan = data.loans.find((l) => l.id === id)
+        const currentTargets = resolveLoanAllocations(action)
+        const totalNeededForTargets = currentTargets.reduce((sum, t) => {
+          if (t.amount != null) return sum + t.amount
+          const loan = data.loans.find((l) => l.id === t.loanId)
           return sum + (loan ? summarizeLoan(loan).remaining : 0)
         }, 0)
         const showMultiLoanPicker = action.type === 'sell_asset' || action.type === 'pay_off_loan'
@@ -483,11 +489,13 @@ function ScenarioForm({
                 onChange={(e) => updateAction({ type: e.target.value as ScenarioActionType })}
                 className="flex-1 bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
               >
-                {Object.entries(ACTION_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(ACTION_LABELS)
+                  .filter(([value]) => value !== 'savings_lump_sum' || hasAnySavingsGoal)
+                  .map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
               </select>
               <button onClick={() => setActions((prev) => prev.filter((_, idx) => idx !== i))} className="text-[var(--color-ink-faint)]" title="Remove action">
                 <Trash2 size={14} />
@@ -629,15 +637,28 @@ function ScenarioForm({
               <div className="col-span-2 flex flex-col gap-1.5">
                 {currentTargets.length > 0 && (
                   <div className="flex flex-col gap-1">
-                    {currentTargets.map((loanId, idx) => {
-                      const loan = data.loans.find((l) => l.id === loanId)
+                    {currentTargets.map((target, idx) => {
+                      const loan = data.loans.find((l) => l.id === target.loanId)
+                      const autoAmount = Math.max(0, action.value - currentTargets.slice(0, idx).reduce((s, t) => s + (t.amount ?? (loan ? summarizeLoan(loan).remaining : 0)), 0))
+                      function updateTarget(patch: Partial<{ loanId: string; amount?: number }>) {
+                        const next = currentTargets.map((t, tIdx) => (tIdx === idx ? { ...t, ...patch } : t))
+                        updateAction({ loanAllocations: next, linkedLoanId: undefined })
+                      }
                       return (
-                        <div key={loanId} className="flex items-center justify-between text-xs rounded-lg px-2 py-1.5" style={{ background: 'var(--color-track)' }}>
-                          <span className="text-[var(--color-ink)]">
+                        <div key={target.loanId} className="flex items-center gap-2 text-xs rounded-lg px-2 py-1.5" style={{ background: 'var(--color-track)' }}>
+                          <span className="text-[var(--color-ink)] flex-1">
                             {idx + 1}. {loan?.name ?? 'Unknown loan'}
                           </span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            placeholder={`auto (£${Math.min(autoAmount, loan ? summarizeLoan(loan).remaining : 0).toFixed(2)})`}
+                            value={target.amount ?? ''}
+                            onChange={(e) => updateTarget({ amount: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="w-24 bg-transparent border-b border-[var(--color-ink-faint)] py-0.5 text-[var(--color-ink)] outline-none font-mono text-right"
+                          />
                           <button
-                            onClick={() => updateAction({ linkedLoanIds: currentTargets.filter((id) => id !== loanId), linkedLoanId: undefined })}
+                            onClick={() => updateAction({ loanAllocations: currentTargets.filter((t) => t.loanId !== target.loanId), linkedLoanId: undefined })}
                             className="text-[var(--color-ink-faint)]"
                           >
                             <Trash2 size={12} />
@@ -651,7 +672,7 @@ function ScenarioForm({
                   value=""
                   onChange={(e) => {
                     if (!e.target.value) return
-                    updateAction({ linkedLoanIds: [...currentTargets, e.target.value], linkedLoanId: undefined })
+                    updateAction({ loanAllocations: [...currentTargets, { loanId: e.target.value }], linkedLoanId: undefined })
                   }}
                   className="bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none text-sm"
                 >
@@ -659,16 +680,17 @@ function ScenarioForm({
                     {currentTargets.length === 0 ? 'No linked loan (optional)' : '+ Add another loan target…'}
                   </option>
                   {data.loans
-                    .filter((l) => !currentTargets.includes(l.id))
+                    .filter((l) => !currentTargets.some((t) => t.loanId === l.id))
                     .map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.name}
                       </option>
                     ))}
                 </select>
-                {currentTargets.length > 1 && (
+                {currentTargets.length > 0 && (
                   <p className="text-[11px] text-[var(--color-ink-faint)]">
-                    Applied in this order — each loan is cleared as far as possible before moving to the next.
+                    By default each target takes as much as it needs, in order — leave the amount blank for that. Type a number to
+                    cap what goes to that one instead.
                   </p>
                 )}
               </div>
