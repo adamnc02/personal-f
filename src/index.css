@@ -34,7 +34,7 @@
      before that script first runs. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --nav-h: 56px;
+  --nav-h: 54px;
 }
 
 /* html/body never scroll — #app-content (inside #app-shell) is the only
@@ -65,4 +65,14 @@ body {
 
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari auto-zooms into any input with a computed font-size under 16px
+   when it gains focus — the viewport meta lock (user-scalable=no) stops the
+   *user* from zooming, but doesn't stop this automatic one, so it's a
+   necessary second half of the same fix, not a duplicate of it. */
+input,
+select,
+textarea {
+  font-size: 16px;
 }

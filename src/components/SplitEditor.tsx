@@ -31,6 +31,7 @@ export function SplitEditor({ people, payee, percent, onChangePayee, onChangePer
         <span className="text-xs text-[var(--color-ink-muted)]">Their share (%)</span>
         <input
           type="number"
+          inputMode="decimal"
           min={0}
           max={100}
           value={percent}

@@ -71,7 +71,6 @@ export interface LoanPayment {
 
 export type ScenarioActionType =
   | 'sell_asset'
-  | 'buy_asset'
   | 'pay_off_loan' // one-off lump sum toward a loan
   | 'new_bill' // a new (or changed) simple recurring monthly cost, not linked to a loan
   | 'new_finance_agreement' // a new loan-like recurring cost, computed from amount/APR/term

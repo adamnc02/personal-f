@@ -7,14 +7,13 @@ import { personalBillsTotal, jointContributionForPerson } from '../lib/bills'
 import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
 import { calculateFinanceAgreement } from '../lib/finance'
-import { Plus, Trash2, ChevronDown, ChevronUp, Layers } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, Layers, Pencil } from 'lucide-react'
 import type { Bill, Loan, Scenario, ScenarioActionType, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { nanoid } from 'nanoid'
 
 const ACTION_LABELS: Record<ScenarioActionType, string> = {
   sell_asset: 'Sell an asset',
-  buy_asset: 'Buy something',
   pay_off_loan: 'Lump sum toward a loan',
   new_bill: 'New bill',
   new_finance_agreement: 'New finance agreement',
@@ -24,13 +23,12 @@ const ACTION_LABELS: Record<ScenarioActionType, string> = {
 }
 
 const NEEDS_LOAN: ScenarioActionType[] = ['pay_off_loan', 'exclude_loan', 'loan_overpayment']
-const NEEDS_VALUE: ScenarioActionType[] = ['sell_asset', 'buy_asset', 'pay_off_loan', 'new_bill', 'loan_overpayment', 'salary_change']
+const NEEDS_VALUE: ScenarioActionType[] = ['sell_asset', 'pay_off_loan', 'new_bill', 'loan_overpayment', 'salary_change']
 const QUICK_FILL_LOAN: ScenarioActionType[] = ['pay_off_loan', 'sell_asset']
 const NEEDS_SPLIT: ScenarioActionType[] = ['new_bill', 'new_finance_agreement']
 
 const VALUE_LABELS: Partial<Record<ScenarioActionType, string>> = {
   sell_asset: 'Sale value (£)',
-  buy_asset: 'Cost (£)',
   pay_off_loan: 'Lump sum (£)',
   new_bill: 'Monthly cost (£)',
   loan_overpayment: 'Extra per month (£)',
@@ -41,6 +39,8 @@ export function Scenarios() {
   const { data, addScenario, updateScenario, removeScenario } = useAppData()
   const [creating, setCreating] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [combinedOpen, setCombinedOpen] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const me = data.people.find((p) => p.id === data.primaryPersonId) ?? data.people[0]
   const allBills = combineBillsWithLoans(data.bills, data.loans)
@@ -71,18 +71,29 @@ export function Scenarios() {
 
       {combinedImpact && (
         <div className="rounded-2xl p-5 mb-6 border" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-coral)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Layers size={16} style={{ color: 'var(--color-coral)' }} />
-            <h2 className="font-display text-base font-semibold text-[var(--color-ink)]">
-              Combined ({includedScenarios.length} scenario{includedScenarios.length === 1 ? '' : 's'})
-            </h2>
-          </div>
-          <ImpactSummary impact={combinedImpact} viewerId={me?.id} />
+          <button onClick={() => setCombinedOpen(!combinedOpen)} className="w-full flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Layers size={16} style={{ color: 'var(--color-coral)' }} />
+              <h2 className="font-display text-base font-semibold text-[var(--color-ink)]">
+                Combined ({includedScenarios.length} scenario{includedScenarios.length === 1 ? '' : 's'})
+              </h2>
+            </div>
+            {combinedOpen ? (
+              <ChevronUp size={18} className="text-[var(--color-ink-muted)]" />
+            ) : (
+              <ChevronDown size={18} className="text-[var(--color-ink-muted)]" />
+            )}
+          </button>
+          {combinedOpen && (
+            <div className="mt-3">
+              <ImpactSummary impact={combinedImpact} viewerId={me?.id} />
+            </div>
+          )}
         </div>
       )}
 
       {creating && (
-        <NewScenarioForm
+        <ScenarioForm
           people={data.people}
           onCancel={() => setCreating(false)}
           onSave={(s) => {
@@ -94,6 +105,21 @@ export function Scenarios() {
 
       <div className="flex flex-col gap-4">
         {data.scenarios.map((scenario) => {
+          if (editingId === scenario.id) {
+            return (
+              <ScenarioForm
+                key={scenario.id}
+                people={data.people}
+                initial={scenario}
+                onCancel={() => setEditingId(null)}
+                onSave={(s) => {
+                  updateScenario(scenario.id, s)
+                  setEditingId(null)
+                }}
+              />
+            )
+          }
+
           const impact = me ? calculateScenarioImpact(scenario, data, me.id, monthlyAvailableBefore) : null
           const isOpen = expanded === scenario.id
           return (
@@ -106,6 +132,15 @@ export function Scenarios() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingId(scenario.id)
+                    }}
+                    className="text-[var(--color-ink-faint)]"
+                  >
+                    <Pencil size={15} />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -217,11 +252,19 @@ function ConvertButtons({ action, people }: { action: Scenario['actions'][number
 function ImpactSummary({ impact, viewerId }: { impact: ScenarioImpact; viewerId?: string }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-[var(--color-ink)]">One-off cash impact</span>
-        <span className="font-mono font-semibold" style={{ color: impact.oneOffCashImpact >= 0 ? 'var(--color-positive)' : 'var(--color-negative)' }}>
-          {impact.oneOffCashImpact >= 0 ? '+' : '-'}£{Math.abs(impact.oneOffCashImpact).toFixed(2)}
-        </span>
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-[var(--color-ink)]">One-off cash impact</span>
+          <span className="font-mono font-semibold" style={{ color: impact.oneOffCashImpact >= 0 ? 'var(--color-positive)' : 'var(--color-negative)' }}>
+            {impact.oneOffCashImpact >= 0 ? '+' : '-'}£{Math.abs(impact.oneOffCashImpact).toFixed(2)}
+          </span>
+        </div>
+        <p className="text-[11px] text-[var(--color-ink-faint)] mt-1 leading-relaxed">
+          A single payment, not a monthly change — whatever's left from your sell/buy actions after their own
+          linked loan is covered. If one sale is split across several actions to pay off more than one loan, each
+          action's leftover is calculated on its own, so double-check the numbers add up to what you actually
+          expect to walk away with.
+        </p>
       </div>
 
       {impact.salaryChangeImpact && (
@@ -325,29 +368,25 @@ function ImpactSummary({ impact, viewerId }: { impact: ScenarioImpact; viewerId?
             </span>
           </div>
         )}
-        {impact.oneOffCashImpact !== 0 && (
-          <p className="text-[11px] text-[var(--color-ink-faint)] mt-2 leading-relaxed">
-            The one-off £{Math.abs(impact.oneOffCashImpact).toFixed(2)} {impact.oneOffCashImpact >= 0 ? 'gain' : 'cost'} isn't included above
-            since it's a single payment, not a monthly change.
-          </p>
-        )}
       </div>
     </div>
   )
 }
 
-function NewScenarioForm({
+function ScenarioForm({
   people,
+  initial,
   onSave,
   onCancel,
 }: {
   people: { id: string; name: string }[]
+  initial?: Scenario
   onSave: (s: Omit<Scenario, 'id'>) => void
   onCancel: () => void
 }) {
   const { data } = useAppData()
-  const [name, setName] = useState('')
-  const [actions, setActions] = useState<Scenario['actions']>([])
+  const [name, setName] = useState(initial?.name ?? '')
+  const [actions, setActions] = useState<Scenario['actions']>(initial?.actions ?? [])
 
   function round2(n: number): number {
     return Math.round(n * 100) / 100
@@ -427,6 +466,7 @@ function NewScenarioForm({
             {showValue && (
               <input
                 type="number"
+                inputMode="decimal"
                 placeholder={VALUE_LABELS[action.type] ?? 'Value (£)'}
                 value={action.value || ''}
                 onChange={(e) => updateAction({ value: Number(e.target.value) })}
@@ -438,6 +478,7 @@ function NewScenarioForm({
               <>
                 <input
                   type="number"
+                  inputMode="decimal"
                   placeholder="Amount to borrow (£)"
                   value={action.borrowAmount || ''}
                   onChange={(e) => {
@@ -449,6 +490,7 @@ function NewScenarioForm({
                 />
                 <input
                   type="number"
+                  inputMode="decimal"
                   placeholder="Term (months)"
                   value={action.termMonths || ''}
                   onChange={(e) => {
@@ -460,6 +502,7 @@ function NewScenarioForm({
                 />
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.1"
                   placeholder="Interest rate % (informational)"
                   value={action.interestRatePercent || ''}
@@ -468,6 +511,7 @@ function NewScenarioForm({
                 />
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.1"
                   placeholder="APR %"
                   value={action.aprPercent || ''}
@@ -519,7 +563,7 @@ function NewScenarioForm({
                 className="col-span-2 text-xs font-medium text-left mt-1"
                 style={{ color: 'var(--color-coral)' }}
               >
-                Use full remaining balance (£{remaining.toFixed(2)}) — clear it completely
+                Use loan's remaining balance (£{remaining.toFixed(2)}) — clear it completely
               </button>
             )}
 
@@ -581,14 +625,14 @@ function NewScenarioForm({
             if (!name.trim() || actions.length === 0) return
             onSave({
               name: name.trim(),
-              includeInCumulative: true,
+              includeInCumulative: initial?.includeInCumulative ?? true,
               actions: actions.map((a) => ({ ...a, label: ACTION_LABELS[a.type] })),
             })
           }}
           className="px-3 py-1.5 rounded-lg text-sm font-medium"
           style={{ background: 'var(--color-coral)', color: '#fff' }}
         >
-          Save scenario
+          {initial ? 'Save changes' : 'Save scenario'}
         </button>
       </div>
     </div>

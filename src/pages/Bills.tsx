@@ -5,6 +5,7 @@ import { downloadBillsJson, parseBillsJson, mergeImportedBills } from '../lib/st
 import { Plus, Trash2, Download, Upload } from 'lucide-react'
 import type { Bill, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
+import { EditField } from '../components/EditField'
 
 export function Bills() {
   const { data, addBill, updateBill, removeBill, replaceBills } = useAppData()
@@ -319,26 +320,3 @@ function BillForm({
   )
 }
 
-function EditField({
-  label,
-  value,
-  onChange,
-  type = 'text',
-}: {
-  label: string
-  value: string | number
-  onChange: (v: string) => void
-  type?: string
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs text-[var(--color-ink-muted)]">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
-      />
-    </label>
-  )
-}

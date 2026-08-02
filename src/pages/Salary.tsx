@@ -96,6 +96,7 @@ export function Salary() {
                 <Field label="Gross annual salary (£)">
                   <input
                     type="number"
+                    inputMode="decimal"
                     value={person.salary.grossAnnual || ''}
                     onChange={(e) => updatePerson(person.id, { salary: { ...person.salary, grossAnnual: Number(e.target.value) } })}
                     className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
@@ -111,6 +112,7 @@ export function Salary() {
                 <Field label="Pension %">
                   <input
                     type="number"
+                    inputMode="decimal"
                     step="0.5"
                     value={person.salary.pensionPercent || ''}
                     onChange={(e) => updatePerson(person.id, { salary: { ...person.salary, pensionPercent: Number(e.target.value) } })}
@@ -285,6 +287,7 @@ function SavingsEntryCard({
               <Field label="Target amount (£)">
                 <input
                   type="number"
+                  inputMode="decimal"
                   value={entry.targetAmount || ''}
                   onChange={(e) => onUpdate({ targetAmount: Number(e.target.value) })}
                   className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
@@ -293,6 +296,7 @@ function SavingsEntryCard({
               <Field label="Saved so far (£)">
                 <input
                   type="number"
+                  inputMode="decimal"
                   value={entry.currentAmount || ''}
                   onChange={(e) => onUpdate({ currentAmount: Number(e.target.value) })}
                   className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
@@ -303,6 +307,7 @@ function SavingsEntryCard({
             <Field label="Amount per month (£)">
               <input
                 type="number"
+                inputMode="decimal"
                 value={entry.monthlyAmount || ''}
                 onChange={(e) => onUpdate({ monthlyAmount: Number(e.target.value) })}
                 className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"

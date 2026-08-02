@@ -60,8 +60,6 @@ export function calculateScenarioImpact(scenario: Scenario, data: AppData, perso
       } else {
         oneOffCashImpact += action.value
       }
-    } else if (action.type === 'buy_asset') {
-      oneOffCashImpact -= action.value
     } else if (action.type === 'pay_off_loan' && action.linkedLoanId) {
       loanLumpSums.set(action.linkedLoanId, (loanLumpSums.get(action.linkedLoanId) ?? 0) + action.value)
     } else if (action.type === 'new_bill' || action.type === 'new_finance_agreement') {
