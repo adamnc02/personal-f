@@ -68,6 +68,10 @@ export function Dashboard() {
     category: 'Joint Account',
     ownerId: me.id,
     isStandingOrder: false,
+    // This row is synthesized, not a real bill, so there's nothing to open
+    // an icon picker on — give it a sensible fixed default instead.
+    icon: 'joint',
+    iconColor: DEFAULT_ICON_COLOR,
   }
   const personalTableRows = jointContribution > 0 ? [...personalBills, jointAccountRow] : personalBills
 
@@ -123,7 +127,7 @@ export function Dashboard() {
           cardIndex === 0 ? (
             <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} />
           ) : (
-            <BillsTable bills={jointBills} people={data.people} showSplit total={jointTotal} />
+            <BillsTable bills={jointBills} people={data.people} showSplit viewerId={me.id} total={jointTotal} />
           )
         ) : cardIndex === 0 ? (
           <BillsCategoryView bills={personalTableRows} total={fullOutgoings} />

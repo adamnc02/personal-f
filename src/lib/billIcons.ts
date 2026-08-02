@@ -33,6 +33,7 @@ import {
   Wrench,
   Fuel,
   Baby,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -71,6 +72,7 @@ export const BILL_ICONS: Record<string, LucideIcon> = {
   maintenance: Wrench,
   fuel: Fuel,
   baby: Baby,
+  joint: Users,
 }
 
 export type BillIconKey = keyof typeof BILL_ICONS
