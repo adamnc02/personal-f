@@ -44,16 +44,6 @@ export function Dashboard() {
   const fullOutgoings = totalOutgoingsForPerson(allBills, me.id, data.people)
   const jointTotal = jointAccountTotal(allBills)
 
-  // Aggregate across every loan for the standalone "Total Debt" ring —
-  // summed from each loan's own repaid-to-date and original amount, not
-  // an average of their individual percentages, so a large loan properly
-  // outweighs a small one in the combined figure.
-  const loanSummaries = data.loans.map((loan) => summarizeLoan(loan))
-  const totalDebtRemaining = round2(loanSummaries.reduce((sum, s) => sum + s.remaining, 0))
-  const totalDebtOriginal = round2(data.loans.reduce((sum, l) => sum + l.totalAmount, 0))
-  const totalDebtRepaid = round2(loanSummaries.reduce((sum, s) => sum + s.repaidToDate, 0))
-  const totalDebtPercentRepaid = totalDebtOriginal > 0 ? Math.min(100, (totalDebtRepaid / totalDebtOriginal) * 100) : 0
-
   // Household combined figures for the 3rd card: every person's income
   // normalized to a monthly-equivalent (so a monthly earner and a 4-weekly
   // earner combine meaningfully), against every bill and loan's full cost —
@@ -62,6 +52,26 @@ export function Dashboard() {
   const totalHouseholdOutgoings = round2(allBills.reduce((sum, b) => sum + b.cost, 0))
   const totalHouseholdAvailable = round2(totalHouseholdIncome - totalHouseholdOutgoings)
   const allBillsCombined = allBills.filter((b) => b.cost > 0)
+
+  // Same scoping as Bills: personal card shows only loans you own, joint
+  // card shows joint loans, household card shows everything. Without this,
+  // switching "Me" left every loan visible regardless of whose it was.
+  const loansForActiveCard =
+    cardIndex === 0
+      ? data.loans.filter((l) => l.location === 'personal' && l.ownerId === me.id)
+      : cardIndex === 1
+        ? data.loans.filter((l) => l.location === 'joint')
+        : data.loans
+
+  // Aggregate across the active card's loans for the "Total Debt" ring —
+  // summed from each loan's own repaid-to-date and original amount, not
+  // an average of their individual percentages, so a large loan properly
+  // outweighs a small one in the combined figure.
+  const loanSummaries = loansForActiveCard.map((loan) => summarizeLoan(loan))
+  const totalDebtRemaining = round2(loanSummaries.reduce((sum, s) => sum + s.remaining, 0))
+  const totalDebtOriginal = round2(loansForActiveCard.reduce((sum, l) => sum + l.totalAmount, 0))
+  const totalDebtRepaid = round2(loanSummaries.reduce((sum, s) => sum + s.repaidToDate, 0))
+  const totalDebtPercentRepaid = totalDebtOriginal > 0 ? Math.min(100, (totalDebtRepaid / totalDebtOriginal) * 100) : 0
 
   // A synthetic row representing this person's total stake in the joint account,
   // shown alongside their personal bills so the table total matches their
@@ -166,10 +176,10 @@ export function Dashboard() {
         </div>
       )}
 
-      {data.loans.length > 0 && (
-        <CollapsibleSection title="Loans" className="mt-10">
+      {loansForActiveCard.length > 0 && (
+        <CollapsibleSection title={cardIndex === 0 ? 'Loans' : cardIndex === 1 ? 'Joint Loans' : 'All Loans'} className="mt-10">
           <div className="flex flex-col items-center gap-10">
-            {data.loans.map((loan) => {
+            {loansForActiveCard.map((loan) => {
               const summary = summarizeLoan(loan)
               const RingIcon = (loan.icon && BILL_ICONS[loan.icon]) || Landmark
               const ringIconColor = loan.icon ? loan.iconColor || DEFAULT_ICON_COLOR : undefined
@@ -187,12 +197,12 @@ export function Dashboard() {
         </CollapsibleSection>
       )}
 
-      {data.loans.length > 1 && (
+      {loansForActiveCard.length > 1 && (
         <div className="mt-10 flex flex-col items-center">
           <ProgressRing
             percent={totalDebtPercentRepaid}
             value={`£${totalDebtRemaining.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            label="Total Debt Remaining"
+            label={cardIndex === 0 ? 'Your Total Debt Remaining' : cardIndex === 1 ? 'Joint Total Debt Remaining' : 'Household Total Debt Remaining'}
             icon={<Landmark size={56} strokeWidth={1.25} />}
           />
         </div>
