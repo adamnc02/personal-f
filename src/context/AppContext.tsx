@@ -10,6 +10,7 @@ interface AppContextValue {
   addPerson: (person: Omit<Person, 'id'>) => string
   updatePerson: (id: string, updates: Partial<Omit<Person, 'id'>>) => void
   removePerson: (id: string) => void
+  setPrimaryPerson: (id: string) => void
 
   addBill: (bill: Omit<Bill, 'id'>) => string
   updateBill: (id: string, updates: Partial<Omit<Bill, 'id'>>) => void
@@ -19,6 +20,7 @@ interface AppContextValue {
   addLoan: (loan: Omit<Loan, 'id'>) => string
   updateLoan: (id: string, updates: Partial<Omit<Loan, 'id'>>) => void
   removeLoan: (id: string) => void
+  replaceLoans: (loans: Loan[]) => void
 
   addScenario: (scenario: Omit<Scenario, 'id'>) => string
   updateScenario: (id: string, updates: Partial<Omit<Scenario, 'id'>>) => void
@@ -48,7 +50,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
   }
   const removePerson: AppContextValue['removePerson'] = (id) => {
-    setDataState((prev) => ({ ...prev, people: prev.people.filter((p) => p.id !== id) }))
+    setDataState((prev) => {
+      const people = prev.people.filter((p) => p.id !== id)
+      // If the person marked "Me" gets removed, fall back to whoever's left
+      // rather than leaving primaryPersonId pointing at nobody.
+      const primaryPersonId = prev.primaryPersonId === id ? (people[0]?.id ?? '') : prev.primaryPersonId
+      return { ...prev, people, primaryPersonId }
+    })
+  }
+  const setPrimaryPerson: AppContextValue['setPrimaryPerson'] = (id) => {
+    setDataState((prev) => ({ ...prev, primaryPersonId: id }))
   }
 
   const addBill: AppContextValue['addBill'] = (bill) => {
@@ -77,6 +88,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeLoan: AppContextValue['removeLoan'] = (id) => {
     setDataState((prev) => ({ ...prev, loans: prev.loans.filter((l) => l.id !== id) }))
   }
+  const replaceLoans: AppContextValue['replaceLoans'] = (loans) => {
+    setDataState((prev) => ({ ...prev, loans }))
+  }
 
   const addScenario: AppContextValue['addScenario'] = (scenario) => {
     const id = nanoid(8)
@@ -98,6 +112,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addPerson,
         updatePerson,
         removePerson,
+        setPrimaryPerson,
         addBill,
         updateBill,
         removeBill,
@@ -105,6 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addLoan,
         updateLoan,
         removeLoan,
+        replaceLoans,
         addScenario,
         updateScenario,
         removeScenario,

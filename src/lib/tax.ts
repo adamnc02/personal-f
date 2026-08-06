@@ -2,14 +2,41 @@
 // Sources: HMRC "Rates and thresholds for employers 2026 to 2027", House of Commons
 // Library "Direct taxes: Rates and allowances for 2026/27".
 //
-// This is a take-home-pay estimator, not a payroll engine. It's accurate for the
-// common case (single employment, standard tax code, PAYE) but doesn't model things
+// This is a take-home-pay estimator, not a payroll engine. It calculates on an
+// annual-divided-by-periods basis, whereas real PAYE payroll uses HMRC's
+// cumulative period-by-period tables — so expect results within pennies of a
+// real payslip, not necessarily identical to it. It also doesn't model things
 // like multiple jobs, benefits in kind, marriage allowance, or SIPP/self-assessment
 // reclaims on higher/additional-rate pension relief.
 
-export type PensionType = 'relief_at_source' | 'salary_sacrifice' | 'net_pay'
 export type StudentLoanPlan = 'none' | 'plan1' | 'plan2' | 'plan4' | 'plan5' | 'postgrad'
 export type PayFrequency = 'monthly' | 'four_weekly'
+
+// How a deduction affects the calculation, matching real payroll categories:
+//  - salary_sacrifice: comes off gross before BOTH tax and NI are calculated
+//    (a genuine reduction in contractual pay, e.g. pension via sacrifice,
+//    Cycle to Work, a Holiday Purchase Scheme)
+//  - net_pay: comes off gross before tax only — NI is still charged on the
+//    full gross (a "net pay arrangement" pension)
+//  - relief_at_source: comes off net pay, after tax/NI/student loan are
+//    calculated on the full gross (a relief-at-source pension; the pension
+//    provider claims basic-rate relief separately, not modelled here)
+//  - post_tax: comes off net pay, no effect on any calculation at all (e.g.
+//    a workplace lottery, a charity deduction, an season ticket loan repayment)
+export type DeductionType = 'salary_sacrifice' | 'net_pay' | 'relief_at_source' | 'post_tax'
+export type DeductionAmountType = 'fixed' | 'percent'
+
+export interface SalaryDeduction {
+  id: string
+  name: string
+  type: DeductionType
+  amountType: DeductionAmountType
+  // £ per pay period if amountType is 'fixed', or % of gross per period if 'percent'.
+  // Percentage deductions are always calculated against the original gross for the
+  // period, not a running total after earlier deductions — matches how real payslips
+  // compute each percentage-based line independently.
+  amount: number
+}
 
 export interface TaxYearConstants {
   personalAllowance: number
@@ -66,20 +93,16 @@ export function parseTaxCode(code: string): TaxCodeResult {
 
   if (c.startsWith('K')) {
     const num = parseInt(c.slice(1), 10)
-    // K codes represent negative allowance (deducted from pay, not added)
     return { allowance: isNaN(num) ? 0 : -(num * 10), flatRate: null, isKCode: true }
   }
 
-  // Standard codes: number × 10 = allowance, e.g. 1257L = £12,570
   const match = c.match(/^(\d+)[LMN T]?$/)
   if (match) {
     return { allowance: parseInt(match[1], 10) * 10, flatRate: null, isKCode: false }
   }
 
-  // 0T = no allowance, taxed across all bands
   if (c === '0T') return { allowance: 0, flatRate: null, isKCode: false }
 
-  // Fallback to the standard personal allowance if we can't parse it
   return { allowance: TAX_YEAR_2026_27.personalAllowance, flatRate: null, isKCode: false }
 }
 
@@ -143,96 +166,129 @@ export function calculateStudentLoanRepayment(grossAnnual: number, plan: Student
 export interface SalaryInput {
   grossAnnual: number
   taxCode: string
-  pensionType: PensionType
-  pensionPercent: number // employee contribution, as a percentage of gross salary
   studentLoanPlan: StudentLoanPlan
   payFrequency: PayFrequency
+  deductions: SalaryDeduction[]
+  employerPensionPercent?: number // informational only — doesn't affect your own take-home
+}
+
+export interface DeductionResult {
+  id: string
+  name: string
+  type: DeductionType
+  amountPerPeriod: number
+  runningTotalAfter: number
 }
 
 export interface SalaryBreakdown {
   grossAnnual: number
-  pensionContribution: number // amount actually leaving take-home pay
-  taxableIncome: number
-  niableIncome: number
-  incomeTax: number
-  nationalInsurance: number
-  studentLoan: number
+  periodsPerYear: number
+  grossPerPeriod: number
+  // Deductions that reduce tax/NI before they're calculated (salary_sacrifice, net_pay)
+  preTaxDeductions: DeductionResult[]
+  grossTaxablePerPeriod: number
+  grossNiablePerPeriod: number
+  incomeTaxPerPeriod: number
+  nationalInsurancePerPeriod: number
+  studentLoanPerPeriod: number
+  // Deductions taken from net pay, no effect on tax/NI (relief_at_source, post_tax)
+  postTaxDeductions: DeductionResult[]
+  netPerPeriod: number
   netAnnual: number
   netMonthly: number // always annual/12, a standard reference figure
   netWeekly: number
-  // The actual per-payslip take-home, based on payFrequency — annual/12 for
-  // monthly, annual/13 for four-weekly (13 pay periods a year). This is what
-  // the rest of the app treats as "one budgeting period" for this person.
-  netPerPeriod: number
-  periodsPerYear: number
+  employerPensionContributionPerPeriod: number
   personalAllowance: number
   taxBreakdown: IncomeTaxBreakdown
 }
 
-/** Full net-salary calculation, accounting for pension contribution type. */
+function resolveAmount(deduction: SalaryDeduction, grossPerPeriod: number): number {
+  return deduction.amountType === 'percent' ? (deduction.amount / 100) * grossPerPeriod : deduction.amount
+}
+
+/** Full net-salary calculation, walking through a person's own ordered list of deductions. */
 export function calculateNetSalary(input: SalaryInput, constants: TaxYearConstants = TAX_YEAR_2026_27): SalaryBreakdown {
-  const grossPension = (input.pensionPercent / 100) * input.grossAnnual
+  const periodsPerYear = input.payFrequency === 'four_weekly' ? 13 : 12
+  const grossPerPeriod = input.grossAnnual / periodsPerYear
 
-  // Determine which income figures tax and NI are calculated against, and what
-  // actually leaves the payslip as a pension deduction.
-  let taxableGross = input.grossAnnual
-  let niableGross = input.grossAnnual
-  let pensionDeductionFromPay = grossPension
+  const deductions = input.deductions ?? []
 
-  if (input.pensionType === 'salary_sacrifice') {
-    taxableGross -= grossPension
-    niableGross -= grossPension
-    pensionDeductionFromPay = 0 // sacrificed before pay, so it's not a payslip deduction
-  } else if (input.pensionType === 'net_pay') {
-    taxableGross -= grossPension
-    // NI still calculated on full gross for net pay arrangements
-    pensionDeductionFromPay = grossPension
+  // --- Phase 1: deductions that affect tax/NI, in the order given ---
+  let runningTotal = grossPerPeriod
+  let taxableGrossPerPeriod = grossPerPeriod
+  let niableGrossPerPeriod = grossPerPeriod
+  const preTaxDeductions: DeductionResult[] = []
+
+  for (const d of deductions) {
+    if (d.type !== 'salary_sacrifice' && d.type !== 'net_pay') continue
+    const amount = resolveAmount(d, grossPerPeriod)
+    runningTotal -= amount
+    taxableGrossPerPeriod -= amount
+    if (d.type === 'salary_sacrifice') niableGrossPerPeriod -= amount
+    preTaxDeductions.push({ id: d.id, name: d.name, type: d.type, amountPerPeriod: amount, runningTotalAfter: runningTotal })
   }
-  // relief_at_source: taxableGross/niableGross unchanged; contribution deducted from
-  // net pay below, at its net cost (basic-rate relief assumed to be added by the
-  // pension provider — higher/additional rate relief isn't modelled here as it's
-  // usually reclaimed separately via Self Assessment)
 
+  // --- Phase 2: tax, NI, student loan on the reduced figures ---
   const taxCodeResult = parseTaxCode(input.taxCode)
+  const annualTaxableGross = taxableGrossPerPeriod * periodsPerYear
   const allowance = taxCodeResult.flatRate
     ? 0
-    : Math.max(0, Math.min(taperedPersonalAllowance(taxableGross, constants), taxCodeResult.allowance))
+    : Math.max(0, Math.min(taperedPersonalAllowance(annualTaxableGross, constants), taxCodeResult.allowance))
 
   let taxBreakdown: IncomeTaxBreakdown
   if (taxCodeResult.flatRate === 'NT') {
     taxBreakdown = { totalTax: 0, bands: [], allowanceUsed: 0 }
   } else if (taxCodeResult.flatRate === 'BR') {
-    const tax = taxableGross * constants.basicRate
-    taxBreakdown = { totalTax: tax, bands: [{ label: 'Basic rate (20%, BR code)', amount: taxableGross, rate: constants.basicRate, tax }], allowanceUsed: 0 }
+    const tax = annualTaxableGross * constants.basicRate
+    taxBreakdown = { totalTax: tax, bands: [{ label: 'Basic rate (20%, BR code)', amount: annualTaxableGross, rate: constants.basicRate, tax }], allowanceUsed: 0 }
   } else if (taxCodeResult.flatRate === 'D0') {
-    const tax = taxableGross * constants.higherRate
-    taxBreakdown = { totalTax: tax, bands: [{ label: 'Higher rate (40%, D0 code)', amount: taxableGross, rate: constants.higherRate, tax }], allowanceUsed: 0 }
+    const tax = annualTaxableGross * constants.higherRate
+    taxBreakdown = { totalTax: tax, bands: [{ label: 'Higher rate (40%, D0 code)', amount: annualTaxableGross, rate: constants.higherRate, tax }], allowanceUsed: 0 }
   } else if (taxCodeResult.flatRate === 'D1') {
-    const tax = taxableGross * constants.additionalRate
-    taxBreakdown = { totalTax: tax, bands: [{ label: 'Additional rate (45%, D1 code)', amount: taxableGross, rate: constants.additionalRate, tax }], allowanceUsed: 0 }
+    const tax = annualTaxableGross * constants.additionalRate
+    taxBreakdown = { totalTax: tax, bands: [{ label: 'Additional rate (45%, D1 code)', amount: annualTaxableGross, rate: constants.additionalRate, tax }], allowanceUsed: 0 }
   } else {
-    taxBreakdown = calculateIncomeTaxEWNI(taxableGross, allowance, constants)
+    taxBreakdown = calculateIncomeTaxEWNI(annualTaxableGross, allowance, constants)
   }
 
-  const ni = calculateNationalInsurance(niableGross, constants)
-  const studentLoan = calculateStudentLoanRepayment(input.grossAnnual, input.studentLoanPlan)
+  const incomeTaxPerPeriod = taxBreakdown.totalTax / periodsPerYear
+  const ni = calculateNationalInsurance(niableGrossPerPeriod * periodsPerYear, constants)
+  const nationalInsurancePerPeriod = ni.total / periodsPerYear
+  // Student loan is calculated on the post-salary-sacrifice gross, matching how
+  // HMRC actually applies it for salary sacrifice arrangements.
+  const studentLoanPerPeriod = calculateStudentLoanRepayment(annualTaxableGross, input.studentLoanPlan) / periodsPerYear
 
-  const netAnnual = input.grossAnnual - taxBreakdown.totalTax - ni.total - studentLoan - pensionDeductionFromPay
-  const periodsPerYear = input.payFrequency === 'four_weekly' ? 13 : 12
+  runningTotal -= incomeTaxPerPeriod + nationalInsurancePerPeriod + studentLoanPerPeriod
+
+  // --- Phase 3: deductions taken from net pay, no effect on tax/NI ---
+  const postTaxDeductions: DeductionResult[] = []
+  for (const d of deductions) {
+    if (d.type !== 'relief_at_source' && d.type !== 'post_tax') continue
+    const amount = resolveAmount(d, grossPerPeriod)
+    runningTotal -= amount
+    postTaxDeductions.push({ id: d.id, name: d.name, type: d.type, amountPerPeriod: amount, runningTotalAfter: runningTotal })
+  }
+
+  const netPerPeriod = runningTotal
+  const netAnnual = netPerPeriod * periodsPerYear
+  const employerPensionContributionPerPeriod = ((input.employerPensionPercent ?? 0) / 100) * grossPerPeriod
 
   return {
     grossAnnual: input.grossAnnual,
-    pensionContribution: pensionDeductionFromPay,
-    taxableIncome: taxableGross,
-    niableIncome: niableGross,
-    incomeTax: taxBreakdown.totalTax,
-    nationalInsurance: ni.total,
-    studentLoan,
+    periodsPerYear,
+    grossPerPeriod,
+    preTaxDeductions,
+    grossTaxablePerPeriod: taxableGrossPerPeriod,
+    grossNiablePerPeriod: niableGrossPerPeriod,
+    incomeTaxPerPeriod,
+    nationalInsurancePerPeriod,
+    studentLoanPerPeriod,
+    postTaxDeductions,
+    netPerPeriod,
     netAnnual,
     netMonthly: netAnnual / 12,
     netWeekly: netAnnual / 52,
-    netPerPeriod: netAnnual / periodsPerYear,
-    periodsPerYear,
+    employerPensionContributionPerPeriod,
     personalAllowance: allowance,
     taxBreakdown,
   }

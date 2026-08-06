@@ -1,4 +1,5 @@
-import type { AppData, Bill } from '../types/models'
+import type { AppData, Bill, Loan, Person } from '../types/models'
+import type { SalaryDeduction } from './tax'
 import { nanoid } from 'nanoid'
 
 const STORAGE_KEY = 'ledger:app-data:v1'
@@ -14,6 +15,39 @@ export function loadAppData(): AppData | null {
   }
 }
 
+/** Converts a person's salary settings from any earlier schema version into the current shape. */
+function migrateSalary(salary: unknown): Person['salary'] {
+  const s = (salary ?? {}) as Partial<Person['salary']> & { pensionType?: string; pensionPercent?: number }
+
+  let deductions = s.deductions
+  if (!deductions) {
+    // Pre-deductions-list schema: a single pension field. Fold it into the
+    // new list so existing users see the same number, just represented
+    // as their first (and only) deduction now.
+    deductions =
+      s.pensionPercent && s.pensionPercent > 0
+        ? [
+            {
+              id: nanoid(6),
+              name: 'Pension',
+              type: (s.pensionType as SalaryDeduction['type']) ?? 'relief_at_source',
+              amountType: 'percent',
+              amount: s.pensionPercent,
+            },
+          ]
+        : []
+  }
+
+  return {
+    grossAnnual: s.grossAnnual ?? 0,
+    taxCode: s.taxCode ?? '1257L',
+    studentLoanPlan: s.studentLoanPlan ?? 'none',
+    payFrequency: s.payFrequency ?? 'monthly',
+    deductions,
+    employerPensionPercent: s.employerPensionPercent,
+  }
+}
+
 /** Backfills fields introduced in later schema versions, for data saved by an earlier version of the app. */
 export function migrateAppData(data: AppData): AppData {
   const fallbackPersonId = data.primaryPersonId ?? data.people[0]?.id ?? ''
@@ -23,7 +57,7 @@ export function migrateAppData(data: AppData): AppData {
     people: (data.people ?? []).map((p) => ({
       ...p,
       savingsEntries: p.savingsEntries ?? [],
-      salary: { ...p.salary, payFrequency: p.salary?.payFrequency ?? 'monthly' },
+      salary: migrateSalary(p.salary),
     })),
     bills: (data.bills ?? []).map((b) => ({
       ...b,
@@ -64,10 +98,9 @@ export function defaultAppData(): AppData {
         salary: {
           grossAnnual: 0,
           taxCode: '1257L',
-          pensionType: 'relief_at_source',
-          pensionPercent: 5,
           studentLoanPlan: 'none',
           payFrequency: 'monthly',
+          deductions: [{ id: nanoid(6), name: 'Pension', type: 'relief_at_source', amountType: 'percent', amount: 5 }],
         },
         savingsEntries: [],
       },
@@ -218,6 +251,120 @@ export function parseBillsJson(json: string, people: { id: string; name: string 
       icon: bill.icon as string | undefined,
       iconColor: bill.iconColor as string | undefined,
     } as Bill
+  })
+}
+
+// ---- Loans export/import — same joint-only, wipe-and-replace pattern as bills ----
+
+interface PortableLoan extends Omit<Loan, 'payee' | 'ownerId'> {
+  payeeName: string
+  ownerName: string
+}
+
+export interface LoansExport {
+  version: 1
+  exportedAt: string
+  loans: PortableLoan[]
+}
+
+/** Only joint loans are exported — personal loans are per-person and don't need sharing. */
+export function exportLoansToJson(loans: Loan[], people: { id: string; name: string }[]): string {
+  const nameById = (id: string) => people.find((p) => p.id === id)?.name ?? id
+  const jointLoans = loans.filter((l) => l.location === 'joint')
+
+  const portableLoans: PortableLoan[] = jointLoans.map(({ payee, ownerId, ...rest }) => ({
+    ...rest,
+    payeeName: nameById(payee),
+    ownerName: nameById(ownerId),
+  }))
+
+  const payload: LoansExport = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    loans: portableLoans,
+  }
+  return JSON.stringify(payload, null, 2)
+}
+
+export function downloadLoansJson(loans: Loan[], people: { id: string; name: string }[], filename = 'loans.json'): void {
+  const json = exportLoansToJson(loans, people)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Replaces the joint loans entirely with whatever's in the import, while
+ * leaving personal loans untouched — same wipe-and-replace approach as
+ * bills, so a loan deleted on the exporting side disappears here too.
+ */
+export function mergeImportedLoans(existingLoans: Loan[], importedLoans: Loan[]): Loan[] {
+  const personalLoans = existingLoans.filter((l) => l.location === 'personal')
+  const newJointLoans = importedLoans.filter((l) => l.location === 'joint')
+  return [...personalLoans, ...newJointLoans]
+}
+
+export function parseLoansJson(json: string, people: { id: string; name: string }[]): Loan[] {
+  const parsed = JSON.parse(json)
+  const loans: unknown = Array.isArray(parsed) ? parsed : parsed.loans
+  if (!Array.isArray(loans)) throw new Error('Invalid loans JSON: expected an array of loans')
+
+  const idByName = (name: string): string | null => {
+    const match = people.find((p) => p.name.toLowerCase() === name.toLowerCase())
+    return match?.id ?? null
+  }
+
+  return loans.map((l) => {
+    const loan = l as Record<string, unknown>
+    if (!loan.name || typeof loan.totalAmount !== 'number' || typeof loan.monthlyPayment !== 'number' || !loan.firstPaymentDate) {
+      throw new Error(`Invalid loan entry: ${JSON.stringify(l)}`)
+    }
+
+    const location = loan.location === 'joint' ? 'joint' : 'personal'
+
+    let payee = ''
+    let payeeSharePercent = typeof loan.payeeSharePercent === 'number' ? loan.payeeSharePercent : 50
+    if (location === 'joint') {
+      const rawPayee = (loan.payeeName ?? loan.payee) as string | undefined
+      const resolved = rawPayee ? idByName(rawPayee) ?? (people.some((p) => p.id === rawPayee) ? rawPayee : null) : null
+      if (!resolved) {
+        throw new Error(
+          `"${loan.name}" is assigned to "${rawPayee ?? 'someone'}", but no one by that name exists yet. Add them on the Salary tab first, then re-import.`
+        )
+      }
+      payee = resolved
+      if (typeof loan.payeeSharePercent !== 'number') payeeSharePercent = 100
+    }
+
+    let ownerId = ''
+    if (location === 'personal') {
+      const rawOwner = (loan.ownerName ?? loan.ownerId) as string | undefined
+      const resolved = rawOwner ? idByName(rawOwner) ?? (people.some((p) => p.id === rawOwner) ? rawOwner : null) : null
+      if (!resolved) {
+        throw new Error(
+          `"${loan.name}" belongs to "${rawOwner ?? 'someone'}", but no one by that name exists yet. Add them on the Salary tab first, then re-import.`
+        )
+      }
+      ownerId = resolved
+    }
+
+    return {
+      id: (loan.id as string) ?? nanoid(8),
+      name: loan.name as string,
+      firstPaymentDate: loan.firstPaymentDate as string,
+      totalAmount: loan.totalAmount as number,
+      monthlyPayment: loan.monthlyPayment as number,
+      location,
+      payee,
+      payeeSharePercent: Math.max(0, Math.min(100, payeeSharePercent)),
+      ownerId,
+      icon: loan.icon as string | undefined,
+      iconColor: loan.iconColor as string | undefined,
+    } as Loan
   })
 }
 

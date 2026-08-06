@@ -54,6 +54,15 @@ export function Dashboard() {
   const totalDebtRepaid = round2(loanSummaries.reduce((sum, s) => sum + s.repaidToDate, 0))
   const totalDebtPercentRepaid = totalDebtOriginal > 0 ? Math.min(100, (totalDebtRepaid / totalDebtOriginal) * 100) : 0
 
+  // Household combined figures for the 3rd card: every person's income
+  // normalized to a monthly-equivalent (so a monthly earner and a 4-weekly
+  // earner combine meaningfully), against every bill and loan's full cost —
+  // not per-person splits, since this view is the whole household's numbers.
+  const totalHouseholdIncome = round2(data.people.reduce((sum, p) => sum + calculateNetSalary(p.salary).netMonthly, 0))
+  const totalHouseholdOutgoings = round2(allBills.reduce((sum, b) => sum + b.cost, 0))
+  const totalHouseholdAvailable = round2(totalHouseholdIncome - totalHouseholdOutgoings)
+  const allBillsCombined = allBills.filter((b) => b.cost > 0)
+
   // A synthetic row representing this person's total stake in the joint account,
   // shown alongside their personal bills so the table total matches their
   // real monthly outgoings (personal bills + joint share).
@@ -100,10 +109,18 @@ export function Dashboard() {
             ))}
           </div>
         </BankCard>
+
+        <BankCard variant="dark" bankLabel="Household" accountLabel="Combined">
+          <div className="mt-6 space-y-1.5">
+            <CardRow label="Income" value={totalHouseholdIncome} light />
+            <CardRow label="Bills & Loans" value={totalHouseholdOutgoings} light />
+            <CardRow label="Available" value={totalHouseholdAvailable} light emphasized />
+          </div>
+        </BankCard>
       </SwipeCards>
 
       <CollapsibleSection
-        title={cardIndex === 0 ? 'Bills' : 'Joint Bills'}
+        title={cardIndex === 0 ? 'Bills' : cardIndex === 1 ? 'Joint Bills' : 'All Bills & Loans'}
         className="mt-8"
         headerExtra={
           <div className="flex gap-1 rounded-full p-0.5" style={{ background: 'var(--color-surface)' }}>
@@ -123,16 +140,22 @@ export function Dashboard() {
           </div>
         }
       >
-        {billsView === 'list' ? (
-          cardIndex === 0 ? (
+        {cardIndex === 0 ? (
+          billsView === 'list' ? (
             <BillsTable bills={personalTableRows} people={data.people} total={fullOutgoings} />
           ) : (
-            <BillsTable bills={jointBills} people={data.people} showSplit viewerId={me.id} total={jointTotal} />
+            <BillsCategoryView bills={personalTableRows} total={fullOutgoings} />
           )
-        ) : cardIndex === 0 ? (
-          <BillsCategoryView bills={personalTableRows} total={fullOutgoings} />
+        ) : cardIndex === 1 ? (
+          billsView === 'list' ? (
+            <BillsTable bills={jointBills} people={data.people} showSplit viewerId={me.id} total={jointTotal} />
+          ) : (
+            <BillsCategoryView bills={jointBills} total={jointTotal} />
+          )
+        ) : billsView === 'list' ? (
+          <BillsTable bills={allBillsCombined} people={data.people} total={totalHouseholdOutgoings} />
         ) : (
-          <BillsCategoryView bills={jointBills} total={jointTotal} />
+          <BillsCategoryView bills={allBillsCombined} total={totalHouseholdOutgoings} />
         )}
       </CollapsibleSection>
 

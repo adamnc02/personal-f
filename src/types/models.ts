@@ -1,4 +1,4 @@
-import type { PayFrequency, PensionType, StudentLoanPlan } from '../lib/tax'
+import type { PayFrequency, SalaryDeduction, StudentLoanPlan } from '../lib/tax'
 
 export interface SavingsEntry {
   id: string
@@ -20,10 +20,10 @@ export interface Person {
   salary: {
     grossAnnual: number
     taxCode: string
-    pensionType: PensionType
-    pensionPercent: number
     studentLoanPlan: StudentLoanPlan
     payFrequency: PayFrequency
+    deductions: SalaryDeduction[] // ordered — applied in payroll order, see lib/tax.ts
+    employerPensionPercent?: number // informational only, doesn't affect take-home
   }
   savingsEntries: SavingsEntry[]
 }

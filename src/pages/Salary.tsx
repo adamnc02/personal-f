@@ -1,17 +1,11 @@
 import { useRef, useState } from 'react'
 import { useAppData } from '../context/AppContext'
-import { calculateNetSalary, type PensionType, type StudentLoanPlan, type PayFrequency } from '../lib/tax'
+import { calculateNetSalary, type StudentLoanPlan, type PayFrequency, type SalaryDeduction, type DeductionType } from '../lib/tax'
 import { monthlyAmountForEntry } from '../lib/savings'
 import { downloadFullBackup, parseFullBackupJson } from '../lib/storage'
-import { Plus, Trash2, Download, Upload } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, ChevronUp, ChevronDown } from 'lucide-react'
 import type { AppData, Person, SavingsEntry } from '../types/models'
 import { nanoid } from 'nanoid'
-
-const PENSION_LABELS: Record<PensionType, string> = {
-  relief_at_source: 'Relief at source',
-  salary_sacrifice: 'Salary sacrifice',
-  net_pay: 'Net pay arrangement',
-}
 
 const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
   none: 'No student loan',
@@ -22,8 +16,15 @@ const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
   postgrad: 'Postgraduate loan',
 }
 
+const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
+  salary_sacrifice: 'Salary sacrifice (before tax & NI)',
+  net_pay: 'Net pay arrangement (before tax only)',
+  relief_at_source: 'Relief at source pension (from net pay)',
+  post_tax: 'Other deduction (from net pay)',
+}
+
 export function Salary() {
-  const { data, setData, updatePerson, addPerson, removePerson } = useAppData()
+  const { data, setData, updatePerson, addPerson, removePerson, setPrimaryPerson } = useAppData()
   const [addingPerson, setAddingPerson] = useState(false)
   const [newName, setNewName] = useState('')
 
@@ -60,10 +61,9 @@ export function Salary() {
                 salary: {
                   grossAnnual: 0,
                   taxCode: '1257L',
-                  pensionType: 'relief_at_source',
-                  pensionPercent: 0,
                   studentLoanPlan: 'none',
                   payFrequency: 'monthly',
+                  deductions: [],
                 },
                 savingsEntries: [],
               })
@@ -81,10 +81,53 @@ export function Salary() {
       <div className="flex flex-col gap-6">
         {data.people.map((person) => {
           const breakdown = calculateNetSalary(person.salary)
+          const periodLabel = person.salary.payFrequency === 'four_weekly' ? 'every 4 weeks' : 'monthly'
+
+          function updateDeductions(deductions: SalaryDeduction[]) {
+            updatePerson(person.id, { salary: { ...person.salary, deductions } })
+          }
+          function addDeduction() {
+            updateDeductions([
+              ...person.salary.deductions,
+              { id: nanoid(6), name: '', type: 'relief_at_source', amountType: 'percent', amount: 0 },
+            ])
+          }
+          function updateDeduction(id: string, patch: Partial<SalaryDeduction>) {
+            updateDeductions(person.salary.deductions.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+          }
+          function removeDeduction(id: string) {
+            updateDeductions(person.salary.deductions.filter((d) => d.id !== id))
+          }
+          function moveDeduction(id: string, direction: -1 | 1) {
+            const list = person.salary.deductions
+            const idx = list.findIndex((d) => d.id === id)
+            const swapWith = idx + direction
+            if (idx < 0 || swapWith < 0 || swapWith >= list.length) return
+            const next = list.slice()
+            ;[next[idx], next[swapWith]] = [next[swapWith], next[idx]]
+            updateDeductions(next)
+          }
+
+          const isPrimary = person.id === data.primaryPersonId
+
           return (
             <div key={person.id} className="rounded-2xl p-5" style={{ background: 'var(--color-surface)' }}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">{person.name}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">{person.name}</h2>
+                  <button
+                    onClick={() => setPrimaryPerson(person.id)}
+                    disabled={isPrimary}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-colors"
+                    style={{
+                      background: isPrimary ? 'var(--color-coral)' : 'var(--color-bg-elevated)',
+                      color: isPrimary ? '#fff' : 'var(--color-ink-muted)',
+                    }}
+                    title={isPrimary ? 'This is your own dashboard view' : 'Make this your dashboard view'}
+                  >
+                    {isPrimary ? 'Me' : 'Set as me'}
+                  </button>
+                </div>
                 {data.people.length > 1 && (
                   <button onClick={() => removePerson(person.id)} className="text-[var(--color-ink-faint)]">
                     <Trash2 size={16} />
@@ -109,29 +152,6 @@ export function Salary() {
                     className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono uppercase"
                   />
                 </Field>
-                <Field label="Pension %">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.5"
-                    value={person.salary.pensionPercent || ''}
-                    onChange={(e) => updatePerson(person.id, { salary: { ...person.salary, pensionPercent: Number(e.target.value) } })}
-                    className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
-                  />
-                </Field>
-                <Field label="Pension type">
-                  <select
-                    value={person.salary.pensionType}
-                    onChange={(e) => updatePerson(person.id, { salary: { ...person.salary, pensionType: e.target.value as PensionType } })}
-                    className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none"
-                  >
-                    {Object.entries(PENSION_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
                 <Field label="Student loan">
                   <select
                     value={person.salary.studentLoanPlan}
@@ -155,22 +175,126 @@ export function Salary() {
                     <option value="four_weekly">Every 4 weeks (13/yr)</option>
                   </select>
                 </Field>
+                <Field label="Employer pension %">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.5"
+                    value={person.salary.employerPensionPercent || ''}
+                    onChange={(e) => updatePerson(person.id, { salary: { ...person.salary, employerPensionPercent: Number(e.target.value) } })}
+                    placeholder="0"
+                    className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none font-mono"
+                  />
+                </Field>
               </div>
 
-              <div className="rounded-xl p-4 mt-2" style={{ background: 'var(--color-bg-elevated)' }}>
-                <BreakdownRow label="Gross" value={breakdown.grossAnnual / breakdown.periodsPerYear} />
-                <BreakdownRow label="Income tax" value={-breakdown.incomeTax / breakdown.periodsPerYear} />
-                <BreakdownRow label="National Insurance" value={-breakdown.nationalInsurance / breakdown.periodsPerYear} />
-                {breakdown.studentLoan > 0 && <BreakdownRow label="Student loan" value={-breakdown.studentLoan / breakdown.periodsPerYear} />}
-                {breakdown.pensionContribution > 0 && (
-                  <BreakdownRow label="Pension" value={-breakdown.pensionContribution / breakdown.periodsPerYear} />
+              {/* Deductions list — order here is payroll order: percentage lines are each
+                  calculated against the original gross, but which run before/after tax
+                  and NI is determined by each one's type, not its position in the list. */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-body text-sm font-semibold text-[var(--color-ink)]">Deductions</h3>
+                  <button onClick={addDeduction} className="text-xs font-medium" style={{ color: 'var(--color-coral)' }}>
+                    + Add deduction
+                  </button>
+                </div>
+                {person.salary.deductions.length === 0 && (
+                  <p className="text-xs text-[var(--color-ink-faint)]">
+                    None yet — add pension contributions or anything else that comes off your pay, e.g. a Holiday
+                    Purchase Scheme or a workplace lottery.
+                  </p>
                 )}
+                <div className="flex flex-col gap-2">
+                  {person.salary.deductions.map((d, i) => (
+                    <div key={d.id} className="rounded-xl p-3" style={{ background: 'var(--color-bg-elevated)' }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          value={d.name}
+                          onChange={(e) => updateDeduction(d.id, { name: e.target.value })}
+                          placeholder="e.g. Pension"
+                          className="flex-1 bg-transparent border-b border-[var(--color-track)] py-1 text-sm text-[var(--color-ink)] outline-none"
+                        />
+                        <div className="flex flex-col">
+                          <button
+                            onClick={() => moveDeduction(d.id, -1)}
+                            disabled={i === 0}
+                            className="disabled:opacity-20 text-[var(--color-ink-muted)]"
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            onClick={() => moveDeduction(d.id, 1)}
+                            disabled={i === person.salary.deductions.length - 1}
+                            className="disabled:opacity-20 text-[var(--color-ink-muted)]"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                        <button onClick={() => removeDeduction(d.id)} className="text-[var(--color-ink-faint)]">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={d.type}
+                          onChange={(e) => updateDeduction(d.id, { type: e.target.value as DeductionType })}
+                          className="col-span-2 bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none"
+                        >
+                          {Object.entries(DEDUCTION_TYPE_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={d.amountType}
+                          onChange={(e) => updateDeduction(d.id, { amountType: e.target.value as SalaryDeduction['amountType'] })}
+                          className="bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none"
+                        >
+                          <option value="percent">% of gross</option>
+                          <option value="fixed">£ fixed</option>
+                        </select>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          value={d.amount || ''}
+                          onChange={(e) => updateDeduction(d.id, { amount: Number(e.target.value) })}
+                          placeholder={d.amountType === 'percent' ? '%' : '£'}
+                          className="bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none font-mono"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Running-total breakdown, mirroring a real payslip's layout */}
+              <div className="rounded-xl p-4 mt-2" style={{ background: 'var(--color-bg-elevated)' }}>
+                <BreakdownRow label="Gross salary" value={breakdown.grossPerPeriod} bold />
+                {breakdown.preTaxDeductions.map((d) => (
+                  <BreakdownRow key={d.id} label={`${d.name || 'Deduction'} (${DEDUCTION_TYPE_SHORT[d.type]})`} value={-d.amountPerPeriod} />
+                ))}
+                {breakdown.preTaxDeductions.length > 0 && (
+                  <>
+                    <div className="h-px my-2" style={{ background: 'var(--color-track)' }} />
+                    <BreakdownRow label="Gross taxable" value={breakdown.grossTaxablePerPeriod} bold />
+                  </>
+                )}
+                <BreakdownRow label="Income tax" value={-breakdown.incomeTaxPerPeriod} />
+                <BreakdownRow label="National Insurance" value={-breakdown.nationalInsurancePerPeriod} />
+                {breakdown.studentLoanPerPeriod > 0 && <BreakdownRow label="Student loan" value={-breakdown.studentLoanPerPeriod} />}
+                {breakdown.postTaxDeductions.map((d) => (
+                  <BreakdownRow key={d.id} label={d.name || 'Deduction'} value={-d.amountPerPeriod} />
+                ))}
                 <div className="h-px my-2" style={{ background: 'var(--color-track)' }} />
-                <BreakdownRow
-                  label={person.salary.payFrequency === 'four_weekly' ? 'Net every 4 weeks' : 'Net monthly'}
-                  value={breakdown.netPerPeriod}
-                  emphasized
-                />
+                <BreakdownRow label={`Net pay (${periodLabel})`} value={breakdown.netPerPeriod} emphasized />
+                {(person.salary.employerPensionPercent ?? 0) > 0 && (
+                  <p className="text-xs text-[var(--color-ink-faint)] mt-2">
+                    Your employer separately contributes £{breakdown.employerPensionContributionPerPeriod.toFixed(2)} (
+                    {person.salary.employerPensionPercent}%) into your pension — this isn't part of your pay.
+                  </p>
+                )}
               </div>
 
               <SavingsSection
@@ -183,12 +307,20 @@ export function Salary() {
       </div>
 
       <p className="text-xs text-[var(--color-ink-faint)] mt-6 leading-relaxed">
-        Estimates use 2026/27 UK tax year rates. This models the common PAYE case and isn't a substitute for a
-        payslip or professional advice — it doesn't account for multiple jobs, benefits in kind, or
-        higher/additional-rate pension relief reclaimed via Self Assessment.
+        Estimates use 2026/27 UK tax year rates, calculated as annual ÷ pay periods. Real payroll uses HMRC's
+        cumulative period-by-period PAYE tables, so expect results within pennies of a real payslip rather than an
+        exact match. Doesn't account for multiple jobs, benefits in kind, or higher/additional-rate pension relief
+        reclaimed via Self Assessment.
       </p>
     </div>
   )
+}
+
+const DEDUCTION_TYPE_SHORT: Record<DeductionType, string> = {
+  salary_sacrifice: 'salary sacrifice',
+  net_pay: 'net pay',
+  relief_at_source: 'relief at source',
+  post_tax: 'post-tax',
 }
 
 function SavingsSection({ person, onUpdate }: { person: Person; onUpdate: (entries: SavingsEntry[]) => void }) {
@@ -432,16 +564,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function BreakdownRow({ label, value, emphasized }: { label: string; value: number; emphasized?: boolean }) {
+function BreakdownRow({ label, value, emphasized, bold }: { label: string; value: number; emphasized?: boolean; bold?: boolean }) {
   const negative = value < 0
   return (
     <div className="flex items-center justify-between py-1">
-      <span className={`font-body ${emphasized ? 'text-sm font-semibold text-[var(--color-ink)]' : 'text-sm text-[var(--color-ink-muted)]'}`}>
+      <span
+        className={`font-body ${emphasized || bold ? 'text-sm font-semibold text-[var(--color-ink)]' : 'text-sm text-[var(--color-ink-muted)]'}`}
+      >
         {label}
       </span>
       <span
-        className={`font-mono tabular-nums ${emphasized ? 'text-base font-semibold' : 'text-sm'}`}
-        style={{ color: emphasized ? 'var(--color-ink)' : negative ? 'var(--color-negative)' : 'var(--color-ink)' }}
+        className={`font-mono tabular-nums ${emphasized ? 'text-base font-semibold' : bold ? 'text-sm font-semibold' : 'text-sm'}`}
+        style={{ color: emphasized || bold ? 'var(--color-ink)' : negative ? 'var(--color-negative)' : 'var(--color-ink)' }}
       >
         {negative ? '-' : ''}£{Math.abs(value).toFixed(2)}
       </span>

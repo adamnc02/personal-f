@@ -20,10 +20,9 @@ function check(label: string, actual: unknown, expected: unknown, tolerance = 0.
 const ellaSalary = {
   grossAnnual: 32000,
   taxCode: '1257L',
-  pensionType: 'relief_at_source' as const,
-  pensionPercent: 5,
   studentLoanPlan: 'plan2' as const,
   payFrequency: 'four_weekly' as const,
+  deductions: [{ id: 'p1', name: 'Pension', type: 'relief_at_source' as const, amountType: 'percent' as const, amount: 5 }],
 }
 const ellaBreakdown = calculateNetSalary(ellaSalary)
 check('Ella periodsPerYear', ellaBreakdown.periodsPerYear, 13)
@@ -33,6 +32,32 @@ check('Ella netMonthly still = netAnnual / 12 (unaffected reference figure)', el
 const adamSalary = { ...ellaSalary, payFrequency: 'monthly' as const, studentLoanPlan: 'none' as const }
 const adamBreakdown = calculateNetSalary(adamSalary)
 check('Adam (monthly) netPerPeriod === netMonthly (no regression)', adamBreakdown.netPerPeriod, adamBreakdown.netMonthly)
+
+// ---- 1b. Deductions engine validated against Ella's real payslip screenshot ----
+// Annual £32,857.50, 4-weekly (13 periods), Plan 1 student loan:
+//   Holiday Purchase Scheme -£52.65 (salary sacrifice)
+//   Pension 2.5% -£63.18 (salary sacrifice)
+//   -> Gross Taxable £2411.67 -> Income Tax £288.80, NI £115.57, Student Loan £30.00
+//   Work Charity Lottery -£4.00 (post-tax)
+//   -> Net £1973.30
+const ellaReal = calculateNetSalary({
+  grossAnnual: 32857.5,
+  taxCode: '1257L',
+  studentLoanPlan: 'plan1',
+  payFrequency: 'four_weekly',
+  deductions: [
+    { id: 'd1', name: 'Holiday Purchase Scheme', type: 'salary_sacrifice', amountType: 'fixed', amount: 52.65 },
+    { id: 'd2', name: 'Pension', type: 'salary_sacrifice', amountType: 'percent', amount: 2.5 },
+    { id: 'd3', name: 'Work Charity Lottery', type: 'post_tax', amountType: 'fixed', amount: 4.0 },
+  ],
+})
+check('Real payslip: gross taxable within 1p of £2411.67', ellaReal.grossTaxablePerPeriod, 2411.67, 0.02)
+check('Real payslip: income tax within £1 of £288.80 (HMRC period tables vs annual÷13 approximation)', ellaReal.incomeTaxPerPeriod, 288.8, 1)
+check('Real payslip: NI within £1 of £115.57', ellaReal.nationalInsurancePerPeriod, 115.57, 1)
+check('Real payslip: student loan within £1 of £30.00', ellaReal.studentLoanPerPeriod, 30.0, 1)
+check('Real payslip: net pay within £1 of £1973.30', ellaReal.netPerPeriod, 1973.3, 1)
+check('Real payslip: preTaxDeductions recorded in order (Holiday first, Pension second)', ellaReal.preTaxDeductions.map((d) => d.name), ['Holiday Purchase Scheme', 'Pension'])
+check('Real payslip: postTaxDeductions recorded', ellaReal.postTaxDeductions.map((d) => d.name), ['Work Charity Lottery'])
 
 // ---- 2. Loan schedule + currentLoanMonthlyCost near payoff ----
 const loan: Loan = {
