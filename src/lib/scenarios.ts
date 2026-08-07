@@ -310,6 +310,50 @@ function virtualLoanBill(loan: Loan, cost: number): Bill {
 }
 
 /**
+ * Same scenario, but the household's combined view rather than one person's:
+ * every loan/bill/finance-agreement counted at its full value rather than
+ * anyone's split share, and a salary change counts regardless of whose it is.
+ *
+ * Implemented by running the normal per-person calculation once for every
+ * person and summing their monthly deltas — the split percentages on every
+ * bill and loan always add up to 100% across the household, so summing each
+ * person's share back together reconstructs the true, unsplit total. The
+ * one-off cash figure and each loan's own balance/term fields are identical
+ * no matter who they're calculated "for", so those are taken once rather
+ * than summed (summing them would multiply by however many people there are).
+ */
+export function calculateHouseholdScenarioImpact(scenario: Scenario, data: AppData, monthlyAvailableBefore: number): ScenarioImpact {
+  const perPerson = data.people.map((p) => calculateScenarioImpact(scenario, data, p.id, 0))
+
+  const oneOffCashImpact = perPerson[0]?.oneOffCashImpact ?? 0
+  const monthlyImpact = round2(perPerson.reduce((sum, r) => sum + r.monthlyImpact, 0))
+
+  const loanImpactsByKey = new Map<string, LoanImpact>()
+  for (const result of perPerson) {
+    for (const li of result.loanImpacts) {
+      const key = `${li.loanId}:${li.kind}`
+      const existing = loanImpactsByKey.get(key)
+      if (existing) {
+        existing.originalMonthlyCostForPerson = round2(existing.originalMonthlyCostForPerson + li.originalMonthlyCostForPerson)
+        existing.newMonthlyCostForPerson = round2(existing.newMonthlyCostForPerson + li.newMonthlyCostForPerson)
+      } else {
+        loanImpactsByKey.set(key, { ...li })
+      }
+    }
+  }
+
+  return {
+    oneOffCashImpact,
+    monthlyAvailableBefore,
+    monthlyAvailableAfter: round2(monthlyAvailableBefore + monthlyImpact),
+    monthlyImpact,
+    loanImpacts: Array.from(loanImpactsByKey.values()),
+    salaryChangeImpact: perPerson.find((r) => r.salaryChangeImpact)?.salaryChangeImpact ?? null,
+    savingsImpacts: perPerson[0]?.savingsImpacts ?? [],
+  }
+}
+
+/**
  * Combines several scenarios into one, so their combined effect can be run
  * through calculateScenarioImpact in a single pass. This matters for
  * correctness, not just convenience: if two scenarios both target the same

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppContext'
-import { calculateScenarioImpact, mergeScenarios, resolveLoanAllocations, type ScenarioImpact } from '../lib/scenarios'
+import { calculateScenarioImpact, calculateHouseholdScenarioImpact, mergeScenarios, resolveLoanAllocations, type ScenarioImpact } from '../lib/scenarios'
 import { calculateNetSalary } from '../lib/tax'
 import { personalBillsTotal, jointContributionForPerson } from '../lib/bills'
 import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
+import { calculateHouseholdFigures } from '../lib/household'
 import { calculateFinanceAgreement } from '../lib/finance'
 import { Plus, Trash2, ChevronDown, ChevronUp, Layers, Pencil } from 'lucide-react'
 import type { Bill, Loan, Scenario, ScenarioActionType, BillLocation } from '../types/models'
@@ -41,24 +42,31 @@ export function Scenarios() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [combinedOpen, setCombinedOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'personal' | 'household'>('personal')
 
   const me = data.people.find((p) => p.id === data.primaryPersonId) ?? data.people[0]
   const allBills = combineBillsWithLoans(data.bills, data.loans)
 
-  const monthlyAvailableBefore = me
+  const personalAvailableBefore = me
     ? calculateNetSalary(me.salary).netPerPeriod -
       personalBillsTotal(allBills, me.id) -
       jointContributionForPerson(allBills, me.id, data.people) -
       totalMonthlySavingsForPerson(me)
     : 0
+  const householdAvailableBefore = calculateHouseholdFigures(data).totalAvailable
+  const monthlyAvailableBefore = viewMode === 'household' ? householdAvailableBefore : personalAvailableBefore
+
+  function getImpact(scenario: Scenario) {
+    if (viewMode === 'household') return calculateHouseholdScenarioImpact(scenario, data, monthlyAvailableBefore)
+    return me ? calculateScenarioImpact(scenario, data, me.id, monthlyAvailableBefore) : null
+  }
 
   const includedScenarios = data.scenarios.filter((s) => s.includeInCumulative)
-  const combinedImpact =
-    me && includedScenarios.length > 0 ? calculateScenarioImpact(mergeScenarios(includedScenarios), data, me.id, monthlyAvailableBefore) : null
+  const combinedImpact = includedScenarios.length > 0 ? getImpact(mergeScenarios(includedScenarios)) : null
 
   return (
     <div className="max-w-md mx-auto px-4 pt-6">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-4 flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">What-if scenarios</h1>
         <button
           onClick={() => setCreating(true)}
@@ -68,6 +76,22 @@ export function Scenarios() {
           <Plus size={18} className="text-white" />
         </button>
       </header>
+
+      <div className="flex gap-1 rounded-full p-0.5 mb-6 w-fit" style={{ background: 'var(--color-surface)' }}>
+        {(['personal', 'household'] as const).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className="px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide capitalize transition-colors"
+            style={{
+              background: viewMode === mode ? 'var(--color-coral)' : 'transparent',
+              color: viewMode === mode ? '#fff' : 'var(--color-ink-muted)',
+            }}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
 
       {combinedImpact && (
         <div className="rounded-2xl p-5 mb-6 border" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-coral)' }}>
@@ -86,7 +110,7 @@ export function Scenarios() {
           </button>
           {combinedOpen && (
             <div className="mt-3">
-              <ImpactSummary impact={combinedImpact} viewerId={me?.id} />
+              <ImpactSummary impact={combinedImpact} viewerId={viewMode === 'personal' ? me?.id : undefined} />
             </div>
           )}
         </div>
@@ -120,7 +144,7 @@ export function Scenarios() {
             )
           }
 
-          const impact = me ? calculateScenarioImpact(scenario, data, me.id, monthlyAvailableBefore) : null
+          const impact = getImpact(scenario)
           const isOpen = expanded === scenario.id
           return (
             <div key={scenario.id} className="rounded-2xl p-5" style={{ background: 'var(--color-surface)' }}>
@@ -196,7 +220,7 @@ export function Scenarios() {
 
                   <div className="h-px my-1" style={{ background: 'var(--color-track)' }} />
 
-                  <ImpactSummary impact={impact} viewerId={me?.id} />
+                  <ImpactSummary impact={impact} viewerId={viewMode === 'personal' ? me?.id : undefined} />
                 </div>
               )}
             </div>
@@ -364,7 +388,7 @@ function ImpactSummary({ impact, viewerId }: { impact: ScenarioImpact; viewerId?
           )}
           {li.originalMonthlyCostForPerson !== li.newMonthlyCostForPerson && (
             <div className="flex justify-between text-xs mt-1" style={{ color: 'var(--color-positive)' }}>
-              <span>Your payment</span>
+              <span>{viewerId ? 'Your payment' : 'Household payment'}</span>
               <span className="font-mono">
                 £{li.originalMonthlyCostForPerson.toFixed(2)} → £{li.newMonthlyCostForPerson.toFixed(2)}/mo
               </span>

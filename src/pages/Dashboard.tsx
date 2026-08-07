@@ -9,6 +9,7 @@ import { calculateNetSalary } from '../lib/tax'
 import { billsByLocation, personalBillsTotal, jointContributionForPerson, standingOrderTotalForPerson, totalOutgoingsForPerson, jointAccountTotal } from '../lib/bills'
 import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
+import { calculateHouseholdFigures } from '../lib/household'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Landmark } from 'lucide-react'
 import { BILL_ICONS, DEFAULT_ICON_COLOR } from '../lib/billIcons'
@@ -48,9 +49,10 @@ export function Dashboard() {
   // normalized to a monthly-equivalent (so a monthly earner and a 4-weekly
   // earner combine meaningfully), against every bill and loan's full cost —
   // not per-person splits, since this view is the whole household's numbers.
-  const totalHouseholdIncome = round2(data.people.reduce((sum, p) => sum + calculateNetSalary(p.salary).netMonthly, 0))
-  const totalHouseholdOutgoings = round2(allBills.reduce((sum, b) => sum + b.cost, 0))
-  const totalHouseholdAvailable = round2(totalHouseholdIncome - totalHouseholdOutgoings)
+  const household = calculateHouseholdFigures(data)
+  const totalHouseholdIncome = household.totalIncome
+  const totalHouseholdOutgoings = household.totalOutgoings
+  const totalHouseholdAvailable = household.totalAvailable
   const allBillsCombined = allBills.filter((b) => b.cost > 0)
 
   // Same scoping as Bills: personal card shows only loans you own, joint

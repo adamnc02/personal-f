@@ -1,7 +1,7 @@
 import { calculateNetSalary } from '../src/lib/tax'
 import { buildLoanSchedule, summarizeLoan, currentLoanMonthlyCost } from '../src/lib/loans'
 import { costForPerson, jointContributionForPerson, personalBillsTotal } from '../src/lib/bills'
-import { calculateScenarioImpact, mergeScenarios } from '../src/lib/scenarios'
+import { calculateScenarioImpact, calculateHouseholdScenarioImpact, mergeScenarios } from '../src/lib/scenarios'
 import { calculateFinanceAgreement } from '../src/lib/finance'
 import { mergeImportedBills } from '../src/lib/storage'
 import type { AppData, Bill, Loan, Person, Scenario } from '../src/types/models'
@@ -166,7 +166,33 @@ const cbImpactElla = calculateScenarioImpact(changeBillScenario, changeBillData,
 check('new_bill: Adam (70%) sees -105/mo', cbImpactAdam.monthlyImpact, -105)
 check('new_bill: Ella (30%) sees -45/mo', cbImpactElla.monthlyImpact, -45)
 
-// ---- 7. Finance agreement: amortisation math ----
+// ---- 6b. Household view: per-person splits should sum back to the true full-value total ----
+const cbImpactHousehold = calculateHouseholdScenarioImpact(changeBillScenario, changeBillData, 1000)
+check("Household view: 70% + 30% reconstructs the full -£150/mo (not double- or under-counted)", cbImpactHousehold.monthlyImpact, -150)
+
+// ---- 6c. Household view: a jointly-split loan being paid off should free up its FULL payment, not half ----
+const jointLoan: Loan = {
+  id: 'joint-loan',
+  name: 'Joint loan',
+  firstPaymentDate: '2027-01-01',
+  totalAmount: 1200,
+  monthlyPayment: 100,
+  location: 'joint',
+  ownerId: '',
+  payee: 'adam',
+  payeeSharePercent: 50,
+}
+const jointLoanData: AppData = { ...scenarioData, loans: [jointLoan] }
+const jointLoanScenario: Scenario = {
+  id: 'jl1',
+  name: 'Clear joint loan',
+  includeInCumulative: true,
+  actions: [{ id: 'jla1', type: 'pay_off_loan', label: '', value: 1200, loanAllocations: [{ loanId: 'joint-loan' }] }],
+}
+const jlImpactAdam = calculateScenarioImpact(jointLoanScenario, jointLoanData, 'adam', 1000)
+const jlImpactHousehold = calculateHouseholdScenarioImpact(jointLoanScenario, jointLoanData, 1000)
+check("Household: Adam alone only sees his 50% share (£50/mo) freed up", jlImpactAdam.monthlyImpact, 50)
+check("Household: combined view sees the FULL £100/mo freed up, not just one person's half", jlImpactHousehold.monthlyImpact, 100)
 const zeroApr = calculateFinanceAgreement({ borrowAmount: 1000, aprPercent: 0, termMonths: 10 })
 check('0% APR: monthly payment is a flat split', zeroApr.monthlyPayment, 100)
 check('0% APR: total repayable = borrowed amount', zeroApr.totalRepayable, 1000)
