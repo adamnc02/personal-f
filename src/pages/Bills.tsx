@@ -137,7 +137,14 @@ export function Bills() {
           .filter((b) => locationFilter === 'all' || b.location === locationFilter)
           .sort((a, b) => a.dueDay - b.dueDay)
           .map((bill) => (
-            <BillRow key={bill.id} bill={bill} people={data.people} onUpdate={(u) => updateBill(bill.id, u)} onRemove={() => removeBill(bill.id)} />
+            <BillRow
+              key={bill.id}
+              bill={bill}
+              people={data.people}
+              defaultOwnerId={data.primaryPersonId || data.people[0]?.id || ''}
+              onUpdate={(u) => updateBill(bill.id, u)}
+              onRemove={() => removeBill(bill.id)}
+            />
           ))}
         {data.bills.length === 0 && !adding && (
           <p className="text-sm text-[var(--color-ink-muted)] text-center py-10">No bills yet. Add one, or import a JSON file shared with you.</p>
@@ -150,11 +157,13 @@ export function Bills() {
 function BillRow({
   bill,
   people,
+  defaultOwnerId,
   onUpdate,
   onRemove,
 }: {
   bill: Bill
   people: { id: string; name: string }[]
+  defaultOwnerId: string
   onUpdate: (u: Partial<Bill>) => void
   onRemove: () => void
 }) {
@@ -196,7 +205,11 @@ function BillRow({
               value={bill.location}
               onChange={(e) => {
                 const location = e.target.value as BillLocation
-                onUpdate(location === 'joint' ? { location, payee: bill.payee || people[0]?.id || '' } : { location })
+                onUpdate(
+                  location === 'joint'
+                    ? { location, payee: bill.payee || people[0]?.id || '' }
+                    : { location, ownerId: bill.ownerId || defaultOwnerId }
+                )
               }}
               className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none"
             >

@@ -3,9 +3,10 @@ import { useAppData } from '../context/AppContext'
 import { calculateNetSalary, type StudentLoanPlan, type PayFrequency, type SalaryDeduction, type DeductionType } from '../lib/tax'
 import { monthlyAmountForEntry } from '../lib/savings'
 import { downloadFullBackup, parseFullBackupJson } from '../lib/storage'
-import { Plus, Trash2, Download, Upload, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Download, Upload } from 'lucide-react'
 import type { AppData, Person, SavingsEntry } from '../types/models'
 import { nanoid } from 'nanoid'
+import { DeductionModal } from '../components/DeductionModal'
 
 const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
   none: 'No student loan',
@@ -16,16 +17,10 @@ const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
   postgrad: 'Postgraduate loan',
 }
 
-const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
-  salary_sacrifice: 'Salary sacrifice (before tax & NI)',
-  net_pay: 'Net pay arrangement (before tax only)',
-  relief_at_source: 'Relief at source pension (from net pay)',
-  post_tax: 'Other deduction (from net pay)',
-}
-
 export function Salary() {
   const { data, setData, updatePerson, addPerson, removePerson, setPrimaryPerson } = useAppData()
   const [addingPerson, setAddingPerson] = useState(false)
+  const [editingDeduction, setEditingDeduction] = useState<{ personId: string; deductionId: string } | null>(null)
   const [newName, setNewName] = useState('')
 
   return (
@@ -87,10 +82,9 @@ export function Salary() {
             updatePerson(person.id, { salary: { ...person.salary, deductions } })
           }
           function addDeduction() {
-            updateDeductions([
-              ...person.salary.deductions,
-              { id: nanoid(6), name: '', type: 'relief_at_source', amountType: 'percent', amount: 0 },
-            ])
+            const id = nanoid(6)
+            updateDeductions([...person.salary.deductions, { id, name: '', type: 'relief_at_source', amountType: 'percent', amount: 0 }])
+            setEditingDeduction({ personId: person.id, deductionId: id })
           }
           function updateDeduction(id: string, patch: Partial<SalaryDeduction>) {
             updateDeductions(person.salary.deductions.map((d) => (d.id === id ? { ...d, ...patch } : d)))
@@ -204,69 +198,54 @@ export function Salary() {
                     Purchase Scheme or a workplace lottery.
                   </p>
                 )}
-                <div className="flex flex-col gap-2">
-                  {person.salary.deductions.map((d, i) => (
-                    <div key={d.id} className="rounded-xl p-3" style={{ background: 'var(--color-bg-elevated)' }}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          value={d.name}
-                          onChange={(e) => updateDeduction(d.id, { name: e.target.value })}
-                          placeholder="e.g. Pension"
-                          className="flex-1 bg-transparent border-b border-[var(--color-track)] py-1 text-sm text-[var(--color-ink)] outline-none"
-                        />
-                        <div className="flex flex-col">
-                          <button
-                            onClick={() => moveDeduction(d.id, -1)}
-                            disabled={i === 0}
-                            className="disabled:opacity-20 text-[var(--color-ink-muted)]"
-                          >
-                            <ChevronUp size={14} />
-                          </button>
-                          <button
-                            onClick={() => moveDeduction(d.id, 1)}
-                            disabled={i === person.salary.deductions.length - 1}
-                            className="disabled:opacity-20 text-[var(--color-ink-muted)]"
-                          >
-                            <ChevronDown size={14} />
-                          </button>
-                        </div>
-                        <button onClick={() => removeDeduction(d.id)} className="text-[var(--color-ink-faint)]">
+                <div className="flex flex-col gap-1.5">
+                  {person.salary.deductions.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setEditingDeduction({ personId: person.id, deductionId: d.id })}
+                      className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left"
+                      style={{ background: 'var(--color-bg-elevated)' }}
+                    >
+                      <span className="text-sm text-[var(--color-ink)]">{d.name || 'Unnamed deduction'}</span>
+                      <span className="flex items-center gap-3">
+                        <span className="font-mono text-sm text-[var(--color-ink-muted)]">
+                          {d.amountType === 'percent' ? `${d.amount}%` : `£${d.amount.toFixed(2)}`}
+                        </span>
+                        <span
+                          role="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeDeduction(d.id)
+                          }}
+                          className="text-[var(--color-ink-faint)]"
+                        >
                           <Trash2 size={14} />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          value={d.type}
-                          onChange={(e) => updateDeduction(d.id, { type: e.target.value as DeductionType })}
-                          className="col-span-2 bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none"
-                        >
-                          {Object.entries(DEDUCTION_TYPE_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={d.amountType}
-                          onChange={(e) => updateDeduction(d.id, { amountType: e.target.value as SalaryDeduction['amountType'] })}
-                          className="bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none"
-                        >
-                          <option value="percent">% of gross</option>
-                          <option value="fixed">£ fixed</option>
-                        </select>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.01"
-                          value={d.amount || ''}
-                          onChange={(e) => updateDeduction(d.id, { amount: Number(e.target.value) })}
-                          placeholder={d.amountType === 'percent' ? '%' : '£'}
-                          className="bg-transparent border-b border-[var(--color-track)] py-1 text-xs text-[var(--color-ink)] outline-none font-mono"
-                        />
-                      </div>
-                    </div>
+                        </span>
+                      </span>
+                    </button>
                   ))}
                 </div>
+
+                {editingDeduction?.personId === person.id &&
+                  (() => {
+                    const idx = person.salary.deductions.findIndex((d) => d.id === editingDeduction.deductionId)
+                    const d = person.salary.deductions[idx]
+                    if (!d) return null
+                    return (
+                      <DeductionModal
+                        deduction={d}
+                        canMoveUp={idx > 0}
+                        canMoveDown={idx < person.salary.deductions.length - 1}
+                        onChange={(patch) => updateDeduction(d.id, patch)}
+                        onMove={(direction) => moveDeduction(d.id, direction)}
+                        onDelete={() => {
+                          removeDeduction(d.id)
+                          setEditingDeduction(null)
+                        }}
+                        onClose={() => setEditingDeduction(null)}
+                      />
+                    )
+                  })()}
               </div>
 
               {/* Running-total breakdown, mirroring a real payslip's layout */}

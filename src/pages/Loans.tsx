@@ -34,9 +34,17 @@ export function Loans() {
       .text()
       .then((text) => {
         const imported = parseLoansJson(text, data.people)
-        const currentJointCount = data.loans.filter((l) => l.location === 'joint').length
+        const importedOwnerNames = Array.from(
+          new Set(
+            imported
+              .filter((l) => l.location === 'personal')
+              .map((l) => data.people.find((p) => p.id === l.ownerId)?.name ?? 'someone')
+          )
+        )
+        const jointCount = imported.filter((l) => l.location === 'joint').length
+        const ownerNote = importedOwnerNames.length > 0 ? ` and replaces all of ${importedOwnerNames.join(', ')}'s personal loans` : ''
         const proceed = window.confirm(
-          `This replaces all ${currentJointCount} of your current joint loans with the ${imported.length} in this file. Your personal loans won't be touched. Continue?`
+          `This replaces your joint loans with the ${jointCount} in this file${ownerNote}. Your own personal loans won't be touched. Continue?`
         )
         if (!proceed) return
         replaceLoans(mergeImportedLoans(data.loans, imported))
@@ -54,7 +62,7 @@ export function Loans() {
             onClick={() => downloadLoansJson(data.loans, data.people)}
             className="w-9 h-9 rounded-full flex items-center justify-center"
             style={{ background: 'var(--color-surface)' }}
-            title="Export joint loans as JSON (to share with a partner)"
+            title="Export all loans as JSON (personal and joint — needed for an accurate household total on both devices)"
           >
             <Download size={16} className="text-[var(--color-ink)]" />
           </button>
@@ -62,7 +70,7 @@ export function Loans() {
             onClick={() => fileInputRef.current?.click()}
             className="w-9 h-9 rounded-full flex items-center justify-center"
             style={{ background: 'var(--color-surface)' }}
-            title="Import joint loans from JSON (replaces your current joint loans)"
+            title="Import loans from JSON (replaces joint loans, and the personal loans of whoever's in the file)"
           >
             <Upload size={16} className="text-[var(--color-ink)]" />
           </button>
@@ -187,7 +195,12 @@ export function Loans() {
                         value={loan.location}
                         onChange={(e) => {
                           const location = e.target.value as BillLocation
-                          updateLoan(loan.id, location === 'joint' ? { location, payee: loan.payee || data.people[0]?.id || '' } : { location })
+                          updateLoan(
+                            loan.id,
+                            location === 'joint'
+                              ? { location, payee: loan.payee || data.people[0]?.id || '' }
+                              : { location, ownerId: loan.ownerId || data.primaryPersonId || data.people[0]?.id || '' }
+                          )
                         }}
                         className="w-full bg-transparent border-b border-[var(--color-track)] py-1 text-[var(--color-ink)] outline-none"
                       >

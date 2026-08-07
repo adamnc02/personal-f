@@ -268,11 +268,18 @@ export interface LoansExport {
 }
 
 /** Only joint loans are exported — personal loans are per-person and don't need sharing. */
+/**
+ * Unlike bills, ALL loans are exported — personal included. Bills stay
+ * private because a personal bill genuinely only concerns its owner, but
+ * loans feed into the combined household total (see the Dashboard's
+ * "Household" card and the What-if page's household toggle), and that
+ * total is only accurate on each device if it includes everyone's loans,
+ * not just the joint ones.
+ */
 export function exportLoansToJson(loans: Loan[], people: { id: string; name: string }[]): string {
   const nameById = (id: string) => people.find((p) => p.id === id)?.name ?? id
-  const jointLoans = loans.filter((l) => l.location === 'joint')
 
-  const portableLoans: PortableLoan[] = jointLoans.map(({ payee, ownerId, ...rest }) => ({
+  const portableLoans: PortableLoan[] = loans.map(({ payee, ownerId, ...rest }) => ({
     ...rest,
     payeeName: nameById(payee),
     ownerName: nameById(ownerId),
@@ -298,14 +305,23 @@ export function downloadLoansJson(loans: Loan[], people: { id: string; name: str
 }
 
 /**
- * Replaces the joint loans entirely with whatever's in the import, while
- * leaving personal loans untouched — same wipe-and-replace approach as
- * bills, so a loan deleted on the exporting side disappears here too.
+ * Joint loans are wiped and replaced entirely, same as bills — correctly
+ * handles deletions, since a loan removed on the exporting side just isn't
+ * in the file to begin with.
+ *
+ * Personal loans are handled per-owner: any owner who appears in the
+ * import has ALL of their existing personal loans replaced with what's in
+ * the file (so if they deleted one, it disappears here too), but owners
+ * who don't appear in the import — i.e. you, since your own export never
+ * includes itself when importing someone else's file — are left completely
+ * untouched.
  */
 export function mergeImportedLoans(existingLoans: Loan[], importedLoans: Loan[]): Loan[] {
-  const personalLoans = existingLoans.filter((l) => l.location === 'personal')
+  const importedOwnerIds = new Set(importedLoans.filter((l) => l.location === 'personal').map((l) => l.ownerId))
+  const keptPersonalLoans = existingLoans.filter((l) => l.location === 'personal' && !importedOwnerIds.has(l.ownerId))
+  const newPersonalLoans = importedLoans.filter((l) => l.location === 'personal')
   const newJointLoans = importedLoans.filter((l) => l.location === 'joint')
-  return [...personalLoans, ...newJointLoans]
+  return [...keptPersonalLoans, ...newPersonalLoans, ...newJointLoans]
 }
 
 export function parseLoansJson(json: string, people: { id: string; name: string }[]): Loan[] {

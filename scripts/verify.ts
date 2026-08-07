@@ -3,7 +3,7 @@ import { buildLoanSchedule, summarizeLoan, currentLoanMonthlyCost } from '../src
 import { costForPerson, jointContributionForPerson, personalBillsTotal } from '../src/lib/bills'
 import { calculateScenarioImpact, calculateHouseholdScenarioImpact, mergeScenarios } from '../src/lib/scenarios'
 import { calculateFinanceAgreement } from '../src/lib/finance'
-import { mergeImportedBills } from '../src/lib/storage'
+import { mergeImportedBills, mergeImportedLoans } from '../src/lib/storage'
 import type { AppData, Bill, Loan, Person, Scenario } from '../src/types/models'
 
 let failures = 0
@@ -288,6 +288,47 @@ check('Manual override: Monzo gets exactly the specified £5000, not its full ne
 check('Manual override: Car auto-takes the remaining £10000 pool (capped to its own £7453.78 need)', overrideImpact.loanImpacts.find((l) => l.loanId === 'car')?.lumpSumApplied, 7453.78)
 check('Manual override: Car fully paid off since 10000 pool exceeds its need', overrideImpact.loanImpacts.find((l) => l.loanId === 'car')?.fullyPaidOff, true)
 check('Manual override: leftover cash = 15000 - 5000 - 7453.78', overrideImpact.oneOffCashImpact, 15000 - 5000 - 7453.78)
+
+// ---- 12. Bug fix: switching a bill/loan from joint to personal must not orphan it ----
+// (ownerId was previously left as '' — the empty string joint bills use — which
+// never matches any real person's id, silently making the item invisible everywhere)
+const wasJointNowPersonal: Bill = {
+  id: 'switched',
+  name: 'Switched bill',
+  cost: 50,
+  dueDay: 1,
+  location: 'personal',
+  ownerId: 'adam', // simulates the FIXED behaviour: ownerId gets set on switch
+  payee: '',
+  payeeSharePercent: 100,
+  category: 'Test',
+  isStandingOrder: true,
+}
+check(
+  'Fixed: a bill switched to personal with an owner set is visible in that owner\'s personal total',
+  personalBillsTotal([wasJointNowPersonal], 'adam'),
+  50
+)
+const stillBrokenIfOwnerEmpty: Bill = { ...wasJointNowPersonal, ownerId: '' }
+check(
+  'Confirms the original bug mechanism: empty ownerId really does make a personal bill invisible (this is why the UI fix matters)',
+  personalBillsTotal([stillBrokenIfOwnerEmpty], 'adam'),
+  0
+)
+
+// ---- 13. Bug fix: loan import merge is owner-aware, not joint-only ----
+const existingLoansForMerge: Loan[] = [
+  { ...loan, id: 'adam-loan', name: "Adam's own loan", ownerId: 'adam', location: 'personal' },
+  { ...loan, id: 'ella-loan-old', name: "Ella's old loan (deleted on her side)", ownerId: 'ella', location: 'personal' },
+]
+const importedFromElla: Loan[] = [
+  { ...loan, id: 'ella-loan-new', name: "Ella's current loan", ownerId: 'ella', location: 'personal' },
+]
+const mergedLoans = mergeImportedLoans(existingLoansForMerge, importedFromElla)
+check("Loan merge: Adam's own loan is untouched (his id never appears in Ella's export)", mergedLoans.some((l) => l.id === 'adam-loan'), true)
+check("Loan merge: Ella's old loan is gone — replaced by what's actually in her export", mergedLoans.some((l) => l.id === 'ella-loan-old'), false)
+check("Loan merge: Ella's current loan from the import is present", mergedLoans.some((l) => l.id === 'ella-loan-new'), true)
+check('Loan merge: total count = 1 (Adam, untouched) + 1 (Ella, replaced)', mergedLoans.length, 2)
 
 // ---- Summary ----
 console.log('\n' + (failures === 0 ? `All checks passed.` : `${failures} check(s) FAILED.`))
