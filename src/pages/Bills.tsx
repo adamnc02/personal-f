@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppContext'
-import { downloadBillsJson, parseBillsJson, mergeImportedBills } from '../lib/storage'
-import { Plus, Trash2, Download, Upload } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import type { Bill, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
@@ -10,11 +9,8 @@ import { BillIcon } from '../components/BillIcon'
 import { IconPickerButton } from '../components/IconPickerModal'
 
 export function Bills() {
-  const { data, addBill, updateBill, removeBill, replaceBills } = useAppData()
+  const { data, addBill, updateBill, removeBill } = useAppData()
   const [adding, setAdding] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [importSuccess, setImportSuccess] = useState(false)
   const [locationFilter, setLocationFilter] = useState<'all' | BillLocation>('all')
   const routerLocation = useLocation()
   const navigate = useNavigate()
@@ -25,76 +21,18 @@ export function Bills() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routerLocation.state])
 
-  function handleImportFile(file: File) {
-    setImportError(null)
-    setImportSuccess(false)
-    file
-      .text()
-      .then((text) => {
-        const imported = parseBillsJson(text, data.people)
-        const currentJointCount = data.bills.filter((b) => b.location === 'joint').length
-        const proceed = window.confirm(
-          `This replaces all ${currentJointCount} of your current joint bills with the ${imported.length} in this file. Your personal bills won't be touched. Continue?`
-        )
-        if (!proceed) return
-        replaceBills(mergeImportedBills(data.bills, imported))
-        setImportSuccess(true)
-      })
-      .catch((err) => setImportError(err.message))
-  }
-
   return (
     <div className="max-w-md mx-auto px-4 pt-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">Bills</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => downloadBillsJson(data.bills, data.people)}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-surface)' }}
-            title="Export joint bills as JSON (to share with a partner)"
-          >
-            <Download size={16} className="text-[var(--color-ink)]" />
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-surface)' }}
-            title="Import joint bills from JSON (replaces your current joint bills)"
-          >
-            <Upload size={16} className="text-[var(--color-ink)]" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleImportFile(file)
-              e.target.value = ''
-            }}
-          />
-          <button
-            onClick={() => setAdding(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-coral)' }}
-          >
-            <Plus size={18} className="text-white" />
-          </button>
-        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: 'var(--color-coral)' }}
+        >
+          <Plus size={18} className="text-white" />
+        </button>
       </header>
-
-      {importError && (
-        <p className="text-xs mb-4 px-1" style={{ color: 'var(--color-negative)' }}>
-          Import failed: {importError}
-        </p>
-      )}
-      {importSuccess && (
-        <p className="text-xs mb-4 px-1" style={{ color: 'var(--color-positive)' }}>
-          Joint bills updated from the imported file.
-        </p>
-      )}
 
       {adding && (
         <BillForm
@@ -147,7 +85,7 @@ export function Bills() {
             />
           ))}
         {data.bills.length === 0 && !adding && (
-          <p className="text-sm text-[var(--color-ink-muted)] text-center py-10">No bills yet. Add one, or import a JSON file shared with you.</p>
+          <p className="text-sm text-[var(--color-ink-muted)] text-center py-10">No bills yet. Add one to get started.</p>
         )}
       </div>
     </div>

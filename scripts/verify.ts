@@ -3,7 +3,6 @@ import { buildLoanSchedule, summarizeLoan, currentLoanMonthlyCost } from '../src
 import { costForPerson, jointContributionForPerson, personalBillsTotal } from '../src/lib/bills'
 import { calculateScenarioImpact, calculateHouseholdScenarioImpact, mergeScenarios } from '../src/lib/scenarios'
 import { calculateFinanceAgreement } from '../src/lib/finance'
-import { mergeImportedBills, mergeImportedLoans } from '../src/lib/storage'
 import type { AppData, Bill, Loan, Person, Scenario } from '../src/types/models'
 
 let failures = 0
@@ -203,22 +202,6 @@ check('12% APR over 12mo: monthly payment ≈ £88.85 (standard amortisation)', 
 check('12% APR: total repayable > borrowed amount (interest applied)', withApr.totalRepayable > 1000, true)
 check('12% APR: totalRepayable = monthlyPayment × term', withApr.totalRepayable, withApr.monthlyPayment * 12, 0.05)
 
-// ---- 8. Bill import: wipes+replaces joint bills, preserves personal bills, handles deletions ----
-const existingBills: Bill[] = [
-  { id: 'p1', name: 'Gym', cost: 30, dueDay: 1, location: 'personal', ownerId: 'adam', payee: '', payeeSharePercent: 100, category: 'Health', isStandingOrder: true },
-  { id: 'j1', name: 'Netflix', cost: 15, dueDay: 1, location: 'joint', ownerId: '', payee: 'adam', payeeSharePercent: 50, category: 'TV', isStandingOrder: true },
-  { id: 'j2', name: 'Old bill no longer in export', cost: 5, dueDay: 1, location: 'joint', ownerId: '', payee: 'adam', payeeSharePercent: 50, category: 'X', isStandingOrder: true },
-]
-const importedJointOnly: Bill[] = [
-  { id: 'new1', name: 'Netflix', cost: 20, dueDay: 1, location: 'joint', ownerId: '', payee: 'ella', payeeSharePercent: 50, category: 'TV', isStandingOrder: true },
-  { id: 'new2', name: 'Spotify', cost: 10, dueDay: 5, location: 'joint', ownerId: '', payee: 'adam', payeeSharePercent: 50, category: 'TV', isStandingOrder: true },
-]
-const mergedBills = mergeImportedBills(existingBills, importedJointOnly)
-check('Merge: personal bill preserved untouched', mergedBills.some((b) => b.id === 'p1'), true)
-check('Merge: old joint bill not in import is gone (deletion handled)', mergedBills.some((b) => b.id === 'j2'), false)
-check('Merge: new joint bills from import present', mergedBills.filter((b) => b.location === 'joint').length, 2)
-check('Merge: total count = 1 personal + 2 new joint', mergedBills.length, 3)
-
 // ---- 9. Savings lump sum: reduces remaining and shows months saved ----
 const adamWithGoal: Person = {
   ...people[0],
@@ -315,20 +298,6 @@ check(
   personalBillsTotal([stillBrokenIfOwnerEmpty], 'adam'),
   0
 )
-
-// ---- 13. Bug fix: loan import merge is owner-aware, not joint-only ----
-const existingLoansForMerge: Loan[] = [
-  { ...loan, id: 'adam-loan', name: "Adam's own loan", ownerId: 'adam', location: 'personal' },
-  { ...loan, id: 'ella-loan-old', name: "Ella's old loan (deleted on her side)", ownerId: 'ella', location: 'personal' },
-]
-const importedFromElla: Loan[] = [
-  { ...loan, id: 'ella-loan-new', name: "Ella's current loan", ownerId: 'ella', location: 'personal' },
-]
-const mergedLoans = mergeImportedLoans(existingLoansForMerge, importedFromElla)
-check("Loan merge: Adam's own loan is untouched (his id never appears in Ella's export)", mergedLoans.some((l) => l.id === 'adam-loan'), true)
-check("Loan merge: Ella's old loan is gone — replaced by what's actually in her export", mergedLoans.some((l) => l.id === 'ella-loan-old'), false)
-check("Loan merge: Ella's current loan from the import is present", mergedLoans.some((l) => l.id === 'ella-loan-new'), true)
-check('Loan merge: total count = 1 (Adam, untouched) + 1 (Ella, replaced)', mergedLoans.length, 2)
 
 // ---- Summary ----
 console.log('\n' + (failures === 0 ? `All checks passed.` : `${failures} check(s) FAILED.`))

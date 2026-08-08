@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppContext'
 import { summarizeLoan, currentLoanMonthlyCost } from '../lib/loans'
-import { downloadLoansJson, parseLoansJson, mergeImportedLoans } from '../lib/storage'
-import { Plus, ChevronDown, ChevronUp, Download, Upload } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Loan, BillLocation } from '../types/models'
 import { SplitEditor } from '../components/SplitEditor'
 import { EditField } from '../components/EditField'
@@ -12,104 +11,35 @@ import { IconPickerButton } from '../components/IconPickerModal'
 import { SwipeToDelete } from '../components/SwipeToDelete'
 
 export function Loans() {
-  const { data, addLoan, updateLoan, removeLoan, replaceLoans } = useAppData()
+  const { data, addLoan, updateLoan, removeLoan } = useAppData()
   const [adding, setAdding] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const routerLocation = useLocation()
   const navigate = useNavigate()
   const prefill = (routerLocation.state as { loanPrefill?: Partial<Omit<Loan, 'id'>> } | null)?.loanPrefill
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [importSuccess, setImportSuccess] = useState(false)
 
   useEffect(() => {
     if (prefill) setAdding(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routerLocation.state])
 
-  function handleImportFile(file: File) {
-    setImportError(null)
-    setImportSuccess(false)
-    file
-      .text()
-      .then((text) => {
-        const imported = parseLoansJson(text, data.people)
-        const importedOwnerNames = Array.from(
-          new Set(
-            imported
-              .filter((l) => l.location === 'personal')
-              .map((l) => data.people.find((p) => p.id === l.ownerId)?.name ?? 'someone')
-          )
-        )
-        const jointCount = imported.filter((l) => l.location === 'joint').length
-        const ownerNote = importedOwnerNames.length > 0 ? ` and replaces all of ${importedOwnerNames.join(', ')}'s personal loans` : ''
-        const proceed = window.confirm(
-          `This replaces your joint loans with the ${jointCount} in this file${ownerNote}. Your own personal loans won't be touched. Continue?`
-        )
-        if (!proceed) return
-        replaceLoans(mergeImportedLoans(data.loans, imported))
-        setImportSuccess(true)
-      })
-      .catch((err) => setImportError(err.message))
-  }
-
   return (
     <div className="max-w-md mx-auto px-4 pt-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">Loans</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => downloadLoansJson(data.loans, data.people)}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-surface)' }}
-            title="Export all loans as JSON (personal and joint — needed for an accurate household total on both devices)"
-          >
-            <Download size={16} className="text-[var(--color-ink)]" />
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-surface)' }}
-            title="Import loans from JSON (replaces joint loans, and the personal loans of whoever's in the file)"
-          >
-            <Upload size={16} className="text-[var(--color-ink)]" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleImportFile(file)
-              e.target.value = ''
-            }}
-          />
-          <button
-            onClick={() => setAdding(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: 'var(--color-coral)' }}
-          >
-            <Plus size={18} className="text-white" />
-          </button>
-        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: 'var(--color-coral)' }}
+        >
+          <Plus size={18} className="text-white" />
+        </button>
       </header>
 
       <p className="text-xs text-[var(--color-ink-faint)] mb-2 leading-relaxed">
         Loans act like automatic bills — their current monthly payment counts toward your personal or joint totals
         on the dashboard without you needing to add it separately. Swipe a loan left to delete it.
       </p>
-
-      {importError && (
-        <p className="text-xs mb-4 px-1" style={{ color: 'var(--color-negative)' }}>
-          Import failed: {importError}
-        </p>
-      )}
-      {importSuccess && (
-        <p className="text-xs mb-4 px-1" style={{ color: 'var(--color-positive)' }}>
-          Joint loans updated from the imported file.
-        </p>
-      )}
 
       {adding && (
         <NewLoanForm
