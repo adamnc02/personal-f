@@ -1,12 +1,23 @@
 import { createPortal } from 'react-dom'
 import { X, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
-import type { SalaryDeduction, DeductionType } from '../lib/tax'
+import type { SalaryDeduction, DeductionType, PercentBasis } from '../lib/tax'
 
 const DEDUCTION_TYPE_LABELS: Record<DeductionType, string> = {
   salary_sacrifice: 'Salary sacrifice (before tax & NI)',
   net_pay: 'Net pay arrangement (before tax only)',
   relief_at_source: 'Relief at source pension (from net pay)',
   post_tax: 'Other deduction (from net pay)',
+}
+
+const PERCENT_BASIS_LABELS: Record<PercentBasis, string> = {
+  gross: 'Full gross pay',
+  qualifying_earnings: 'Qualifying earnings band',
+}
+
+const PERCENT_BASIS_HELP: Record<PercentBasis, string> = {
+  gross: 'The percentage applies to your whole gross pay for the period.',
+  qualifying_earnings:
+    'Auto-enrolment basis: the percentage applies only to the slice of pay between £520 and £4,189 a month (£480–£3,867 if 4-weekly). Most workplace pensions use this — check your payslip if unsure.',
 }
 
 interface DeductionModalProps {
@@ -79,7 +90,7 @@ export function DeductionModal({ deduction, canMoveUp, canMoveDown, onChange, on
                 onChange={(e) => onChange({ amountType: e.target.value as SalaryDeduction['amountType'] })}
                 className="w-full bg-transparent border-b border-[var(--color-track)] py-1.5 text-sm text-[var(--color-ink)] outline-none"
               >
-                <option value="percent">% of gross</option>
+                <option value="percent">% percentage</option>
                 <option value="fixed">£ fixed</option>
               </select>
             </label>
@@ -96,6 +107,29 @@ export function DeductionModal({ deduction, canMoveUp, canMoveDown, onChange, on
               />
             </label>
           </div>
+
+          {/* Only meaningful for percentage lines. A workplace pension quoted as
+              "4%" is usually 4% of the qualifying earnings band, not of gross —
+              on a £2,500 monthly gross that's £79.20 rather than £100. */}
+          {deduction.amountType === 'percent' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--color-ink-muted)]">Percentage of</span>
+              <select
+                value={deduction.percentBasis ?? 'gross'}
+                onChange={(e) => onChange({ percentBasis: e.target.value as PercentBasis })}
+                className="w-full bg-transparent border-b border-[var(--color-track)] py-1.5 text-sm text-[var(--color-ink)] outline-none"
+              >
+                {Object.entries(PERCENT_BASIS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] leading-snug text-[var(--color-ink-faint)] mt-0.5">
+                {PERCENT_BASIS_HELP[deduction.percentBasis ?? 'gross']}
+              </span>
+            </label>
+          )}
 
           <div className="flex items-center justify-between mt-2 pt-3 border-t" style={{ borderColor: 'var(--color-track)' }}>
             <div className="flex items-center gap-1">

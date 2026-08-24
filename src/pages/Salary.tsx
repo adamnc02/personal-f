@@ -209,7 +209,9 @@ export function Salary() {
                       <span className="text-sm text-[var(--color-ink)]">{d.name || 'Unnamed deduction'}</span>
                       <span className="flex items-center gap-3">
                         <span className="font-mono text-sm text-[var(--color-ink-muted)]">
-                          {d.amountType === 'percent' ? `${d.amount}%` : `£${d.amount.toFixed(2)}`}
+                          {d.amountType === 'percent'
+                            ? `${d.amount}%${d.percentBasis === 'qualifying_earnings' ? ' QE' : ''}`
+                            : `£${d.amount.toFixed(2)}`}
                         </span>
                         <span
                           role="button"

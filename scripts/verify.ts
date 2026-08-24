@@ -1,4 +1,4 @@
-import { calculateNetSalary } from '../src/lib/tax'
+import { calculateNetSalary, parseTaxCode } from '../src/lib/tax'
 import { buildLoanSchedule, summarizeLoan, currentLoanMonthlyCost } from '../src/lib/loans'
 import { costForPerson, jointContributionForPerson, personalBillsTotal } from '../src/lib/bills'
 import { calculateScenarioImpact, calculateHouseholdScenarioImpact, mergeScenarios } from '../src/lib/scenarios'
@@ -50,13 +50,65 @@ const ellaReal = calculateNetSalary({
     { id: 'd3', name: 'Work Charity Lottery', type: 'post_tax', amountType: 'fixed', amount: 4.0 },
   ],
 })
-check('Real payslip: gross taxable within 1p of £2411.67', ellaReal.grossTaxablePerPeriod, 2411.67, 0.02)
-check('Real payslip: income tax within £1 of £288.80 (HMRC period tables vs annual÷13 approximation)', ellaReal.incomeTaxPerPeriod, 288.8, 1)
-check('Real payslip: NI within £1 of £115.57', ellaReal.nationalInsurancePerPeriod, 115.57, 1)
-check('Real payslip: student loan within £1 of £30.00', ellaReal.studentLoanPerPeriod, 30.0, 1)
-check('Real payslip: net pay within £1 of £1973.30', ellaReal.netPerPeriod, 1973.3, 1)
+// Tolerances are EXACT (0p) since the engine moved to per-period HMRC thresholds
+// and rounding. If one of these starts drifting, a threshold or rounding rule is wrong.
+check('Ella payslip: gross taxable = £2411.67', ellaReal.grossTaxablePerPeriod, 2411.67, 0)
+check('Ella payslip: pension 2.5% of gross truncated to £63.18', ellaReal.preTaxDeductions[1].amountPerPeriod, 63.18, 0)
+check('Ella payslip: free pay = £967.62 (1257L → £12,579 allowance ÷ 13, rounded up)', ellaReal.freePayPerPeriod, 967.62, 0)
+check('Ella payslip: taxable pay floored to whole pounds = £1444', ellaReal.taxablePayPerPeriod, 1444, 0)
+check('Ella payslip: income tax = £288.80', ellaReal.incomeTaxPerPeriod, 288.8, 0)
+check('Ella payslip: NI = £115.57 (4-weekly PT £967, NOT 4 × £242)', ellaReal.nationalInsurancePerPeriod, 115.57, 0)
+check('Ella payslip: student loan = £30.00 (floored to whole pounds)', ellaReal.studentLoanPerPeriod, 30.0, 0)
+check('Ella payslip: net pay = £1973.30', ellaReal.netPerPeriod, 1973.3, 0)
 check('Real payslip: preTaxDeductions recorded in order (Holiday first, Pension second)', ellaReal.preTaxDeductions.map((d) => d.name), ['Holiday Purchase Scheme', 'Pension'])
 check('Real payslip: postTaxDeductions recorded', ellaReal.postTaxDeductions.map((d) => d.name), ['Work Charity Lottery'])
+
+// ---- 1c. Deductions engine validated against Lew's real payslip ----
+// Annual £30,000, monthly (12 periods), 1137L, Plan 2 student loan:
+//   -> Income Tax £310.20, NI £116.16, Student Loan £4.00
+//   Pension 4% of QUALIFYING EARNINGS (not gross) -£79.20 (relief at source)
+//   -> Net £1990.44
+// This case is what forced the per-period rewrite: the old annual÷12 engine
+// returned £1968.69, out by £21.75.
+const lewReal = calculateNetSalary({
+  grossAnnual: 30000,
+  taxCode: '1137L',
+  studentLoanPlan: 'plan2',
+  payFrequency: 'monthly',
+  deductions: [
+    { id: 'l1', name: 'Pension', type: 'relief_at_source', amountType: 'percent', amount: 4, percentBasis: 'qualifying_earnings' },
+  ],
+})
+check('Lew payslip: free pay = £948.25 (1137L → £11,379 allowance, i.e. ×10 + 9)', lewReal.freePayPerPeriod, 948.25, 0)
+check('Lew payslip: taxable pay floored to whole pounds = £1551', lewReal.taxablePayPerPeriod, 1551, 0)
+check('Lew payslip: income tax = £310.20', lewReal.incomeTaxPerPeriod, 310.2, 0)
+check('Lew payslip: NI = £116.16 (monthly PT £1,048, NOT £12,570 ÷ 12)', lewReal.nationalInsurancePerPeriod, 116.16, 0)
+check('Lew payslip: student loan = £4.00 (£4.61 floored to whole pounds)', lewReal.studentLoanPerPeriod, 4, 0)
+check('Lew payslip: pension = £79.20 (4% of qualifying earnings, NOT £100 on gross)', lewReal.postTaxDeductions[0].amountPerPeriod, 79.2, 0)
+check('Lew payslip: net pay = £1990.44', lewReal.netPerPeriod, 1990.44, 0)
+
+// ---- 1d. Regression guards on the specific bugs fixed in the per-period rewrite ----
+check('Tax code allowance is ×10 + 9', parseTaxCode('1257L').allowance, 12579)
+check('K code allowance is negative ×10 + 9', parseTaxCode('K475').allowance, -4759)
+check('W1/M1 suffix stripped, allowance intact', parseTaxCode('1257L W1').allowance, 12579)
+check('Scottish prefix stripped, allowance intact', parseTaxCode('S1257L').allowance, 12579)
+check('Tax code above 1257L is NOT capped at the standard allowance', calculateNetSalary({ grossAnnual: 40000, taxCode: '1350L', studentLoanPlan: 'none', payFrequency: 'monthly', deductions: [] }).personalAllowance, 13509)
+// A net-pay-arrangement pension reduces tax but must NOT reduce NI or student loan.
+const netPayPension = calculateNetSalary({
+  grossAnnual: 40000, taxCode: '1257L', studentLoanPlan: 'plan2', payFrequency: 'monthly',
+  deductions: [{ id: 'np', name: 'Pension', type: 'net_pay', amountType: 'percent', amount: 5 }],
+})
+const noPension = calculateNetSalary({
+  grossAnnual: 40000, taxCode: '1257L', studentLoanPlan: 'plan2', payFrequency: 'monthly', deductions: [],
+})
+check('net_pay pension does not reduce NI', netPayPension.nationalInsurancePerPeriod, noPension.nationalInsurancePerPeriod, 0)
+check('net_pay pension does not reduce student loan', netPayPension.studentLoanPerPeriod, noPension.studentLoanPerPeriod, 0)
+check('net_pay pension does reduce income tax', netPayPension.incomeTaxPerPeriod < noPension.incomeTaxPerPeriod, true)
+// percentBasis defaults to 'gross' so existing saved data is unaffected.
+check('percentBasis defaults to gross', calculateNetSalary({
+  grossAnnual: 30000, taxCode: '1137L', studentLoanPlan: 'none', payFrequency: 'monthly',
+  deductions: [{ id: 'x', name: 'P', type: 'relief_at_source', amountType: 'percent', amount: 4 }],
+}).postTaxDeductions[0].amountPerPeriod, 100, 0)
 
 // ---- 2. Loan schedule + currentLoanMonthlyCost near payoff ----
 const loan: Loan = {
