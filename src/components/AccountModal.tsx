@@ -55,8 +55,14 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
     await signOut()
   }
 
+  // absolute, not fixed — position: fixed is known to break inside this
+  // app's #app-shell on iOS standalone (see BottomNav.tsx's own comment on
+  // exactly this). #app-shell is position: relative and fills the screen,
+  // so inset-0 against it renders identically to a true fixed overlay
+  // without the iOS bug. This was the actual cause of these modals rendering
+  // behind the nav bar — not z-index.
   return (
-    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="absolute inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
@@ -152,8 +158,14 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
     }
   }
 
+  // absolute, not fixed — position: fixed is known to break inside this
+  // app's #app-shell on iOS standalone (see BottomNav.tsx's own comment on
+  // exactly this). #app-shell is position: relative and fills the screen,
+  // so inset-0 against it renders identically to a true fixed overlay
+  // without the iOS bug. This was the actual cause of these modals rendering
+  // behind the nav bar — not z-index.
   return (
-    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={handleClose}>
+    <div className="absolute inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={handleClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
