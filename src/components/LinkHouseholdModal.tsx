@@ -104,7 +104,7 @@ export function LinkHouseholdModal({ open, onClose, onJoined }: LinkHouseholdMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
