@@ -3,10 +3,12 @@ import { useAppData } from '../context/AppContext'
 import { calculateNetSalary, type StudentLoanPlan, type PayFrequency, type SalaryDeduction, type DeductionType } from '../lib/tax'
 import { monthlyAmountForEntry } from '../lib/savings'
 import { downloadFullBackup, parseFullBackupJson } from '../lib/storage'
-import { Plus, Trash2, Download, Upload } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, Link2 } from 'lucide-react'
 import type { AppData, Person, SavingsEntry } from '../types/models'
 import { nanoid } from 'nanoid'
 import { DeductionModal } from '../components/DeductionModal'
+import { LinkHouseholdModal } from '../components/LinkHouseholdModal'
+import { AccountModal, ChangePasswordModal, AccountIcon } from '../components/AccountModal'
 
 const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
   none: 'No student loan',
@@ -22,19 +24,51 @@ export function Salary() {
   const [addingPerson, setAddingPerson] = useState(false)
   const [editingDeduction, setEditingDeduction] = useState<{ personId: string; deductionId: string } | null>(null)
   const [newName, setNewName] = useState('')
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   return (
     <div className="max-w-md mx-auto px-4 pt-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">Salary</h1>
-        <button
-          onClick={() => setAddingPerson(true)}
-          className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ background: 'var(--color-surface)' }}
-        >
-          <Plus size={18} className="text-[var(--color-ink)]" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAccountModalOpen(true)}
+            aria-label="Account"
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--color-surface)' }}
+          >
+            <AccountIcon size={18} className="text-[var(--color-ink)]" />
+          </button>
+          <button
+            onClick={() => setLinkModalOpen(true)}
+            aria-label="Link household"
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--color-surface)' }}
+          >
+            <Link2 size={16} className="text-[var(--color-ink)]" />
+          </button>
+          <button
+            onClick={() => setAddingPerson(true)}
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'var(--color-surface)' }}
+          >
+            <Plus size={18} className="text-[var(--color-ink)]" />
+          </button>
+        </div>
       </header>
+
+      <LinkHouseholdModal open={linkModalOpen} onClose={() => setLinkModalOpen(false)} />
+      <AccountModal
+        open={accountModalOpen}
+        onClose={() => setAccountModalOpen(false)}
+        onOpenChangePassword={() => {
+          setAccountModalOpen(false)
+          setChangePasswordOpen(true)
+        }}
+      />
+      <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
 
       <BackupSection data={data} onRestore={setData} />
 

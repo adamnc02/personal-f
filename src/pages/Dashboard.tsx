@@ -11,6 +11,7 @@ import { summarizeLoan, combineBillsWithLoans } from '../lib/loans'
 import { totalMonthlySavingsForPerson } from '../lib/savings'
 import { calculateHouseholdFigures } from '../lib/household'
 import { CollapsibleSection } from '../components/CollapsibleSection'
+import { DuplicatePersonBanner } from '../components/DuplicatePersonBanner'
 import { Landmark } from 'lucide-react'
 import { BILL_ICONS, DEFAULT_ICON_COLOR } from '../lib/billIcons'
 import type { Bill } from '../types/models'
@@ -98,6 +99,7 @@ export function Dashboard() {
 
   return (
     <div className="max-w-md mx-auto px-4 pt-6">
+      <DuplicatePersonBanner />
       <header className="mb-6">
         <p className="font-body text-sm text-[var(--color-ink-muted)]">Welcome back</p>
         <h1 className="font-display text-2xl font-semibold text-[var(--color-ink)]">{me.name}'s Overview</h1>

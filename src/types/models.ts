@@ -17,6 +17,13 @@ export interface Person {
   id: string
   name: string
   color: string // accent color used for "their" data throughout the UI
+  // Supabase auth user id, set only via "Set as me". Ties this row to a
+  // real signed-in person rather than just a typed name — the name alone
+  // isn't stable across devices (Adam's guess of "Ella" on his device and
+  // Ella's own row on her device are two unrelated local ids that happen
+  // to share a name string). Undefined for rows nobody has claimed yet
+  // (someone else's guess, or a solo user who's never toggled it).
+  linkedUserId?: string
   salary: {
     grossAnnual: number
     taxCode: string
