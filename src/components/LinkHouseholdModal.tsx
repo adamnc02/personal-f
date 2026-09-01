@@ -108,10 +108,10 @@ export function LinkHouseholdModal({ open, onClose, onJoined }: LinkHouseholdMod
   // comment for the full explanation (overflow-clipping via #app-content,
   // not a z-index or fixed/absolute CSS question).
   return createPortal(
-    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[500] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
       <div
-        className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
-        style={{ background: 'var(--color-surface)' }}
+        className="w-full max-w-md rounded-t-3xl p-5"
+        style={{ background: 'var(--color-surface)', paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 20px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
