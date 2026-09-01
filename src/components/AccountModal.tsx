@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { UserCircle2, X } from 'lucide-react'
+import { UserCircle2, X, CloudUpload, History } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { useAuth } from '../context/AuthContext'
+import { useAppData } from '../context/AppContext'
+import { uploadSnapshot, listSnapshots, restoreFromSnapshot, type SnapshotInfo } from '../lib/backup'
 
 /**
  * Ported from BLOC's `updateAccountUI()` (index.html, `modal-account` +
@@ -49,11 +51,70 @@ interface AccountModalProps {
  */
 export function AccountModal({ open, onClose, onOpenChangePassword }: AccountModalProps) {
   const { session, signOut } = useAuth()
+  const { data, setData } = useAppData()
+  const [backingUp, setBackingUp] = useState(false)
+  const [backupStatus, setBackupStatus] = useState<{ text: string; error: boolean } | null>(null)
+  const [lastBackup, setLastBackup] = useState<SnapshotInfo | null>(null)
+  const [restoreOpen, setRestoreOpen] = useState(false)
+  const [snapshots, setSnapshots] = useState<SnapshotInfo[] | null>(null)
+  const [restoring, setRestoring] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open || !session) return
+    listSnapshots(session.user.id)
+      .then((list) => setLastBackup(list[0] ?? null))
+      .catch((err) => console.warn('[backup] could not load snapshot list:', err))
+  }, [open, session])
+
   if (!open || !session) return null
 
   const handleSignOut = async () => {
     onClose()
     await signOut()
+  }
+
+  const handleBackupNow = async () => {
+    setBackingUp(true)
+    setBackupStatus(null)
+    try {
+      await uploadSnapshot(session.user.id, data)
+      const list = await listSnapshots(session.user.id)
+      setLastBackup(list[0] ?? null)
+      setBackupStatus({ text: 'Backed up.', error: false })
+    } catch (e) {
+      setBackupStatus({ text: e instanceof Error ? e.message : 'Backup failed.', error: true })
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
+  const openRestorePicker = async () => {
+    setRestoreOpen(true)
+    setBackupStatus(null)
+    try {
+      const list = await listSnapshots(session.user.id)
+      setSnapshots(list)
+    } catch (e) {
+      setBackupStatus({ text: e instanceof Error ? e.message : 'Could not load backups.', error: true })
+    }
+  }
+
+  const handleRestore = async (name: string) => {
+    if (!confirm(`Restore the backup from ${name.replace('.json', '')}? This replaces everything currently on this device.`)) {
+      return
+    }
+    setRestoring(name)
+    setBackupStatus(null)
+    try {
+      const restored = await restoreFromSnapshot(session.user.id, name)
+      setData(restored)
+      setRestoreOpen(false)
+      setBackupStatus({ text: 'Restored.', error: false })
+    } catch (e) {
+      setBackupStatus({ text: e instanceof Error ? e.message : 'Restore failed.', error: true })
+    } finally {
+      setRestoring(null)
+    }
   }
 
   // Rendered through a portal directly to document.body — NOT just an
@@ -94,6 +155,71 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
             </button>
           )}
         </div>
+
+        {restoreOpen ? (
+          <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--color-track)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-display text-sm font-semibold text-[var(--color-ink)]">Restore a backup</div>
+              <button onClick={() => setRestoreOpen(false)} className="text-xs text-[var(--color-ink-muted)]">
+                Cancel
+              </button>
+            </div>
+            {snapshots === null ? (
+              <p className="text-xs text-[var(--color-ink-muted)]">Loading…</p>
+            ) : snapshots.length === 0 ? (
+              <p className="text-xs text-[var(--color-ink-muted)]">No cloud backups yet.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                {snapshots.map((s) => (
+                  <button
+                    key={s.name}
+                    onClick={() => handleRestore(s.name)}
+                    disabled={restoring !== null}
+                    className="w-full text-left text-sm py-2 px-3 rounded-xl text-[var(--color-ink)] disabled:opacity-60"
+                    style={{ background: 'var(--color-surface)' }}
+                  >
+                    {restoring === s.name ? 'Restoring…' : s.name.replace('.json', '')}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--color-track)' }}>
+            <div className="font-display text-sm font-semibold text-[var(--color-ink)] mb-0.5">Cloud Backup</div>
+            <div className="text-xs text-[var(--color-ink-muted)] mb-3">
+              {lastBackup ? `Last backed up ${lastBackup.name.replace('.json', '')}` : 'No cloud backup yet'}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleBackupNow}
+                disabled={backingUp}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl text-[var(--color-surface)] bg-[var(--color-ink)] disabled:opacity-60"
+              >
+                <CloudUpload size={14} />
+                {backingUp ? 'Backing up…' : 'Back Up Now'}
+              </button>
+              <button
+                onClick={openRestorePicker}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl text-[var(--color-ink)]"
+                style={{ background: 'var(--color-surface)' }}
+              >
+                <History size={14} />
+                Restore
+              </button>
+            </div>
+          </div>
+        )}
+
+        {backupStatus && (
+          <p
+            className="text-xs mb-3 text-center"
+            style={{ color: backupStatus.error ? 'var(--color-negative)' : 'var(--color-positive)' }}
+          >
+            {backupStatus.text}
+          </p>
+        )}
+
         <button
           onClick={handleSignOut}
           className="w-full py-3 rounded-2xl font-semibold text-[var(--color-negative)]"

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
-import { AppProvider } from './context/AppContext'
+import { AppProvider, useAppData } from './context/AppContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AuthGate } from './components/AuthGate'
 import { BottomNav } from './components/BottomNav'
@@ -9,6 +9,7 @@ import { Salary } from './pages/Salary'
 import { Loans } from './pages/Loans'
 import { Bills } from './pages/Bills'
 import { Scenarios } from './pages/Scenarios'
+import { maybeUploadOpportunisticSnapshot } from './lib/backup'
 
 /** #app-content is the app's only scroll container, so route changes need to reset its scroll manually. */
 function ScrollToTop({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
@@ -16,6 +17,27 @@ function ScrollToTop({ containerRef }: { containerRef: React.RefObject<HTMLDivEl
   useEffect(() => {
     containerRef.current?.scrollTo({ top: 0 })
   }, [pathname, containerRef])
+  return null
+}
+
+/**
+ * Fires once per app load (not on every data edit — `attempted` guards
+ * that) — same "opportunistic daily backup" idea as BLOC's own
+ * maybeUploadOpportunisticSnapshot() call at boot. Silent, best-effort;
+ * see backup.ts's own comment on why failures here are swallowed rather
+ * than surfaced.
+ */
+function OpportunisticBackup() {
+  const { session } = useAuth()
+  const { data } = useAppData()
+  const attempted = useRef(false)
+
+  useEffect(() => {
+    if (!session || attempted.current) return
+    attempted.current = true
+    maybeUploadOpportunisticSnapshot(session.user.id, data)
+  }, [session, data])
+
   return null
 }
 
@@ -46,6 +68,7 @@ function AppShell() {
           }}
         >
           <ScrollToTop containerRef={contentRef} />
+          <OpportunisticBackup />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/salary" element={<Salary />} />
