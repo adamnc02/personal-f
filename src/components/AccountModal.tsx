@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { UserCircle2, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { useAuth } from '../context/AuthContext'
@@ -55,14 +56,21 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
     await signOut()
   }
 
-  // absolute, not fixed — position: fixed is known to break inside this
-  // app's #app-shell on iOS standalone (see BottomNav.tsx's own comment on
-  // exactly this). #app-shell is position: relative and fills the screen,
-  // so inset-0 against it renders identically to a true fixed overlay
-  // without the iOS bug. This was the actual cause of these modals rendering
-  // behind the nav bar — not z-index.
-  return (
-    <div className="absolute inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+  // Rendered through a portal directly to document.body — NOT just an
+  // absolute/fixed CSS choice. #app-content (the scrollable page area)
+  // has overflow-y-auto, and this modal is a DOM descendant of it (it's
+  // rendered from Salary.tsx). An `absolute` element gets clipped by any
+  // `overflow` ancestor sitting between it and its containing block —
+  // #app-content sits exactly there, between this modal and #app-shell —
+  // which is what actually caused it to render clipped behind the nav
+  // bar (two earlier CSS-only attempts, z-index and then `absolute`,
+  // both missed this — see MIGRATION-LESSONS.md). A portal removes the
+  // modal from that DOM subtree entirely, so no ancestor's overflow or
+  // stacking context can affect it — this is also just the standard way
+  // to build modals in React generally, not a workaround specific to
+  // this bug.
+  return createPortal(
+    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
@@ -94,7 +102,8 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
           Sign Out
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -158,14 +167,11 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
     }
   }
 
-  // absolute, not fixed — position: fixed is known to break inside this
-  // app's #app-shell on iOS standalone (see BottomNav.tsx's own comment on
-  // exactly this). #app-shell is position: relative and fills the screen,
-  // so inset-0 against it renders identically to a true fixed overlay
-  // without the iOS bug. This was the actual cause of these modals rendering
-  // behind the nav bar — not z-index.
-  return (
-    <div className="absolute inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={handleClose}>
+  // Rendered through a portal to document.body — see AccountModal's own
+  // comment above for why (overflow-clipping via #app-content, not a
+  // z-index or fixed/absolute CSS question).
+  return createPortal(
+    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={handleClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
@@ -220,7 +226,8 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
           </p>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link2, X, Copy, Check, RotateCcw } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 
@@ -103,14 +104,11 @@ export function LinkHouseholdModal({ open, onClose, onJoined }: LinkHouseholdMod
     }
   }
 
-  // absolute, not fixed — position: fixed is known to break inside this
-  // app's #app-shell on iOS standalone (see BottomNav.tsx's own comment on
-  // exactly this). #app-shell is position: relative and fills the screen,
-  // so inset-0 against it renders identically to a true fixed overlay
-  // without the iOS bug. This was the actual cause of this modal rendering
-  // behind the nav bar — not z-index.
-  return (
-    <div className="absolute inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+  // Rendered through a portal to document.body — see AccountModal.tsx's
+  // comment for the full explanation (overflow-clipping via #app-content,
+  // not a z-index or fixed/absolute CSS question).
+  return createPortal(
+    <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-5"
         style={{ background: 'var(--color-surface)' }}
@@ -219,7 +217,8 @@ export function LinkHouseholdModal({ open, onClose, onJoined }: LinkHouseholdMod
 
         {error && <p className="text-xs text-[var(--color-negative)] mt-3">{error}</p>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
