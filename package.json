@@ -12,6 +12,7 @@
     "verify": "tsx scripts/verify.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.28.0",
     "nanoid": "^6.0.0",

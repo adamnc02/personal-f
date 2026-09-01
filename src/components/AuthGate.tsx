@@ -2,6 +2,29 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { AUTH_PROVIDERS } from '../lib/supabaseClient'
 
+/** Same multi-color "G" mark BLOC and My Dream Clean both use, for visual
+ *  consistency across all three apps — identical SVG paths, just JSX
+ *  instead of an innerHTML string (BLOC's AUTH_PROVIDERS carries the icon
+ *  as a raw SVG string it injects via innerHTML; React renders it as a
+ *  real element instead, same visual result). */
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18">
+      <path fill="#4285F4" d="M23.52 12.27c0-.82-.07-1.6-.2-2.36H12v4.47h6.47c-.28 1.5-1.13 2.77-2.4 3.62v3h3.88c2.27-2.09 3.57-5.17 3.57-8.73z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.26v3.1C3.24 21.3 7.28 24 12 24z" />
+      <path fill="#FBBC05" d="M5.27 14.29c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29v-3.1H1.26A11.96 11.96 0 0 0 0 12c0 1.94.46 3.77 1.26 5.39l4.01-3.1z" />
+      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.28 0 3.24 2.7 1.26 6.61l4.01 3.1C6.22 6.86 8.87 4.75 12 4.75z" />
+    </svg>
+  )
+}
+
+/** Keyed by AUTH_PROVIDERS' `id` — same "one-line addition, no markup
+ *  change" intent as BLOC's config array. Add Apple/Microsoft's icon here
+ *  when either provider is actually added, nothing else needs to change. */
+const PROVIDER_ICONS: Record<string, () => React.ReactElement> = {
+  google: GoogleIcon,
+}
+
 /**
  * Full-screen mandatory sign-in, shown whenever `session` is `null`
  * (checked and signed out) — never for `undefined` (still checking), which
@@ -75,17 +98,21 @@ export function AuthGate() {
         </div>
 
         <div className="space-y-2 mb-5">
-          {AUTH_PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={handleGoogle}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-medium text-sm text-[var(--color-ink)]"
-              style={{ background: 'var(--color-surface)' }}
-            >
-              {p.label}
-            </button>
-          ))}
+          {AUTH_PROVIDERS.map((p) => {
+            const Icon = PROVIDER_ICONS[p.id]
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={handleGoogle}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-medium text-sm text-[var(--color-ink)]"
+                style={{ background: 'var(--color-surface)' }}
+              >
+                {Icon && <Icon />}
+                {p.label}
+              </button>
+            )
+          })}
         </div>
 
         <div className="flex items-center gap-3 mb-5">
