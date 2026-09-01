@@ -10,6 +10,10 @@ import { Loans } from './pages/Loans'
 import { Bills } from './pages/Bills'
 import { Scenarios } from './pages/Scenarios'
 import { maybeUploadOpportunisticSnapshot } from './lib/backup'
+import { powerSyncDb } from './lib/powersync/database'
+import { SupabaseConnector } from './lib/powersync/connector'
+
+const powerSyncConnector = new SupabaseConnector()
 
 /** #app-content is the app's only scroll container, so route changes need to reset its scroll manually. */
 function ScrollToTop({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
@@ -105,9 +109,34 @@ function Gate() {
   )
 }
 
+/**
+ * Connects/disconnects PowerSync's local database in lockstep with the
+ * auth session — mounted as a sibling of <Gate />, not inside it, so it
+ * stays mounted across sign-in/out and actually sees the transition to
+ * `null` (Gate unmounts everything else on sign-out and swaps in
+ * <AuthGate />, so anything living only inside Gate's signed-in branch
+ * would never observe that transition to disconnect). Connecting is
+ * idempotent and safe to call again if this effect re-runs.
+ */
+function PowerSyncConnection() {
+  const { session } = useAuth()
+
+  useEffect(() => {
+    if (session) {
+      powerSyncDb.connect(powerSyncConnector)
+    } else if (session === null) {
+      powerSyncDb.disconnect()
+    }
+    // session === undefined (still checking) — do nothing either way.
+  }, [session])
+
+  return null
+}
+
 function App() {
   return (
     <AuthProvider>
+      <PowerSyncConnection />
       <Gate />
     </AuthProvider>
   )
