@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { UserCircle2, X, CloudUpload, History } from 'lucide-react'
+import { UserCircle2, X, CloudUpload, History, RefreshCw } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { useAuth } from '../context/AuthContext'
 import { useAppData } from '../context/AppContext'
 import { uploadSnapshot, listSnapshots, restoreFromSnapshot, type SnapshotInfo } from '../lib/backup'
+import { powerSyncDb, powerSyncConnector } from '../lib/powersync/database'
 
 /**
  * Ported from BLOC's `updateAccountUI()` (index.html, `modal-account` +
@@ -58,6 +59,8 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
   const [restoreOpen, setRestoreOpen] = useState(false)
   const [snapshots, setSnapshots] = useState<SnapshotInfo[] | null>(null)
   const [restoring, setRestoring] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !session) return
@@ -67,6 +70,28 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
   }, [open, session])
 
   if (!open || !session) return null
+
+  /**
+   * Stand-in for real pull-to-refresh (not built yet — see HANDOFF.md).
+   * disconnect() then connect(), not just connect() again, since
+   * PowerSync may already consider itself "connected" even when nothing
+   * is actually progressing (the exact stuck state that prompted this
+   * button) — disconnecting first forces a genuinely fresh handshake
+   * rather than a no-op on an already-open connection.
+   */
+  const forceSync = async () => {
+    setSyncing(true)
+    setSyncStatus(null)
+    try {
+      await powerSyncDb.disconnect()
+      await powerSyncDb.connect(powerSyncConnector)
+      setSyncStatus('Reconnected.')
+    } catch (e) {
+      setSyncStatus(e instanceof Error ? e.message : 'Sync failed.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const handleSignOut = async () => {
     onClose()
@@ -155,6 +180,19 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
             </button>
           )}
         </div>
+
+        <button
+          onClick={forceSync}
+          disabled={syncing}
+          className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl mb-4 text-[var(--color-ink)] disabled:opacity-60"
+          style={{ background: 'var(--color-track)' }}
+        >
+          <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Force Sync'}
+        </button>
+        {syncStatus && (
+          <p className="text-xs text-center mb-3 text-[var(--color-ink-muted)]">{syncStatus}</p>
+        )}
 
         {restoreOpen ? (
           <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--color-track)' }}>

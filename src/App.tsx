@@ -10,10 +10,7 @@ import { Loans } from './pages/Loans'
 import { Bills } from './pages/Bills'
 import { Scenarios } from './pages/Scenarios'
 import { maybeUploadOpportunisticSnapshot } from './lib/backup'
-import { powerSyncDb } from './lib/powersync/database'
-import { SupabaseConnector } from './lib/powersync/connector'
-
-const powerSyncConnector = new SupabaseConnector()
+import { powerSyncDb, powerSyncConnector } from './lib/powersync/database'
 
 /** #app-content is the app's only scroll container, so route changes need to reset its scroll manually. */
 function ScrollToTop({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {

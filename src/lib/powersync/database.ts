@@ -1,5 +1,6 @@
 import { PowerSyncDatabase, WASQLiteVFS } from '@powersync/web'
 import { AppSchema } from './schema'
+import { SupabaseConnector } from './connector'
 
 /**
  * OPFSCoopSyncVFS, not the default IDBBatchAtomicVFS — PowerSync's own
@@ -15,3 +16,9 @@ export const powerSyncDb = new PowerSyncDatabase({
     vfs: WASQLiteVFS.OPFSCoopSyncVFS,
   },
 })
+
+/** One shared connector instance — imported both by App.tsx (initial
+ *  connect/disconnect tracking the auth session) and by anything that
+ *  needs to force a fresh sync (e.g. AccountModal's manual "Force Sync",
+ *  and eventually real pull-to-refresh) without creating a second one. */
+export const powerSyncConnector = new SupabaseConnector()
