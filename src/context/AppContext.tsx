@@ -201,6 +201,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const hhId = requireHousehold()
     const idMap = new Map<string, string>()
 
+    // Delete existing bills/loans explicitly, not just people — a real
+    // bug this session found: removePerson() only nulls a bill/loan's
+    // owner_id when that owner is deleted, it never deletes the bill/loan
+    // row itself. Without this, restoring twice just adds a second copy
+    // of everything on top of the first restore, rather than replacing it.
+    for (const row of billRows) await writes.removeBill(row.id)
+    for (const row of loanRows) await writes.removeLoan(row.id)
     for (const row of peopleRows) await writes.removePerson(row.id)
     for (const row of scenarioRows) await writes.removeScenario(row.id)
 
