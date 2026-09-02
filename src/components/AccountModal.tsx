@@ -158,7 +158,7 @@ export function AccountModal({ open, onClose, onOpenChangePassword }: AccountMod
   return createPortal(
     <div className="fixed inset-0 z-[500] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-t-3xl p-5"
+        className="w-full max-w-md rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto"
         style={{ background: 'var(--color-surface)', paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 20px)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -337,7 +337,7 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
   return createPortal(
     <div className="fixed inset-0 z-[500] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={handleClose}>
       <div
-        className="w-full max-w-md rounded-t-3xl p-5"
+        className="w-full max-w-md rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto"
         style={{ background: 'var(--color-surface)', paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) + 20px)' }}
         onClick={(e) => e.stopPropagation()}
       >

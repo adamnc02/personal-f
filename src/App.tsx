@@ -4,6 +4,7 @@ import { AppProvider, useAppData } from './context/AppContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AuthGate } from './components/AuthGate'
 import { BottomNav } from './components/BottomNav'
+import { PullToRefresh } from './components/PullToRefresh'
 import { Dashboard } from './pages/Dashboard'
 import { Salary } from './pages/Salary'
 import { Loans } from './pages/Loans'
@@ -61,7 +62,7 @@ function AppShell() {
         <div
           id="app-content"
           ref={contentRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden"
+          className="relative flex-1 overflow-y-auto overflow-x-hidden"
           style={{
             paddingTop: 'var(--safe-top)',
             paddingBottom: 'calc(var(--nav-h) + var(--safe-bottom) - 6px + 20px)',
@@ -70,6 +71,7 @@ function AppShell() {
         >
           <ScrollToTop containerRef={contentRef} />
           <OpportunisticBackup />
+          <PullToRefresh containerRef={contentRef} />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/salary" element={<Salary />} />
