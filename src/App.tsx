@@ -125,6 +125,17 @@ function PowerSyncConnection() {
     if (session) {
       powerSyncDb.connect(powerSyncConnector)
     } else if (session === null) {
+      // disconnect(), not disconnectAndClear() — stops syncing but keeps
+      // whatever was last stored locally. Fine for one person's own
+      // repeated sign-out/sign-in on their own device (faster resume,
+      // nothing to re-download). Known gap: if this device is ever
+      // actually shared between two different real people signing in
+      // with their own separate accounts, the second person could
+      // briefly see the first person's stale local data until fresh
+      // Sync Streams data replaces it. Not a concern for how this app is
+      // actually used today (Adam's own device); would need
+      // disconnectAndClear() on sign-out to close properly if that ever
+      // changes.
       powerSyncDb.disconnect()
     }
     // session === undefined (still checking) — do nothing either way.

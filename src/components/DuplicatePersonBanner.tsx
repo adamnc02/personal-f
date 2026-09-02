@@ -16,19 +16,31 @@ import { findDuplicatePeople, mergeDuplicatePerson } from '../lib/duplicates'
  * still unresolved) — no data is ever touched without the user choosing to.
  */
 export function DuplicatePersonBanner() {
-  const { data, replaceBills, replaceLoans, setData } = useAppData()
+  const { data, replaceBills, replaceLoans, removePerson } = useAppData()
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [resolving, setResolving] = useState<string | null>(null)
   const matches = findDuplicatePeople(data).filter((m) => !dismissed.has(m.duplicate.id))
 
   if (matches.length === 0) return null
 
-  const resolve = (duplicateId: string) => {
+  const resolve = async (duplicateId: string) => {
     const match = findDuplicatePeople(data).find((m) => m.duplicate.id === duplicateId)
     if (!match) return
-    const result = mergeDuplicatePerson(data, match)
-    replaceBills(result.bills)
-    replaceLoans(result.loans)
-    setData({ ...data, people: result.people, bills: result.bills, loans: result.loans })
+    setResolving(duplicateId)
+    try {
+      const result = mergeDuplicatePerson(data, match)
+      // replaceBills/replaceLoans diff against current state and only
+      // update the rows that actually changed owner (the reassigned
+      // ones) — removePerson then deletes the now-empty duplicate row.
+      // Each of these is a real write against PowerSync's local database
+      // (synced onward from there), not a local state assignment, so
+      // they're awaited in order rather than fired together.
+      await replaceBills(result.bills)
+      await replaceLoans(result.loans)
+      await removePerson(match.duplicate.id)
+    } finally {
+      setResolving(null)
+    }
   }
 
   const dismiss = (duplicateId: string) => {
@@ -54,9 +66,10 @@ export function DuplicatePersonBanner() {
             <div className="flex gap-2 mt-2">
               <button
                 onClick={() => resolve(match.duplicate.id)}
-                className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--color-ink)] text-[var(--color-surface)]"
+                disabled={resolving !== null}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--color-ink)] text-[var(--color-surface)] disabled:opacity-60"
               >
-                Merge & remove duplicate
+                {resolving === match.duplicate.id ? 'Merging…' : 'Merge & remove duplicate'}
               </button>
               <button
                 onClick={() => dismiss(match.duplicate.id)}

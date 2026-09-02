@@ -21,10 +21,6 @@ const people = new Table(
     student_loan_plan: column.text,
     pay_frequency: column.text,
     employer_pension_percent: column.real,
-    savings_goal_name: column.text,
-    savings_goal_target_amount: column.real,
-    savings_goal_current_amount: column.real,
-    savings_goal_target_date: column.text,
   },
   { indexes: { household: ['household_id'] } },
 )
@@ -46,9 +42,13 @@ const savings_entries = new Table(
   {
     user_id: column.text,
     person_id: column.text,
-    date: column.text,
-    amount: column.real,
-    note: column.text,
+    type: column.text, // 'goal' | 'plan'
+    name: column.text,
+    include_in_summary: column.integer, // Postgres boolean -> SQLite 0/1
+    target_amount: column.real,
+    current_amount: column.real,
+    target_date: column.text,
+    monthly_amount: column.real,
   },
   { indexes: { person: ['person_id'] } },
 )
