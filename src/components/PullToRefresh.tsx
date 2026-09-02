@@ -1,35 +1,44 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { powerSyncDb, powerSyncConnector } from '../lib/powersync/database'
 
 const ENABLED_PATHS = ['/salary', '/bills', '/loans', '/scenarios']
-const PULL_THRESHOLD = 64 // px of pull before release triggers a refresh
-const MAX_PULL = 100 // px — resistance cap, matches the classic rubber-band feel
+const PULL_THRESHOLD = 56 // px of pull before release triggers a refresh
+const MAX_PULL = 90 // px — resistance cap
+const HOLD_OFFSET = 48 // px content stays pushed down while actually refreshing
+const INDICATOR_HEIGHT = 40 // px — the gap the indicator lives in, above the content
 
 interface PullToRefreshProps {
   containerRef: React.RefObject<HTMLDivElement | null>
+  children: ReactNode
 }
 
 /**
- * The classic iOS pull-down-to-refresh gesture, attached to #app-content
- * — the single scroll container shared across every route (see
- * App.tsx) — rather than mounted per-page, since there's only ever one
- * real scrollable element to attach touch listeners to. Gated to
- * specific routes via the current pathname instead. Explicitly NOT
- * enabled on Dashboard, per Adam's own scoping.
+ * Real pull-to-refresh — wraps the page content and translates it
+ * downward as you pull, same as native iOS: the indicator lives in the
+ * gap this reveals, directly above the content's own top edge, so it can
+ * never overlap a page's header/title (the previous floating-overlay
+ * version could, since content never actually moved). While a refresh is
+ * genuinely in flight, content stays held down at HOLD_OFFSET with the
+ * spinner actively spinning — it only springs back once the refresh
+ * action resolves, not the instant you lift your finger.
  *
- * Does exactly what Force Sync's button does — disconnect() then
- * connect(), not just connect() again, since PowerSync can believe it's
- * already connected even while genuinely stuck (see AccountModal's own
- * comment on this) — this is the gesture-driven form of that same
- * action, not a separate mechanism.
+ * Attached to #app-content — the one scroll container shared across
+ * every route (see App.tsx) — gated to specific routes via the current
+ * pathname. On a disabled route (Dashboard), no listeners are attached
+ * at all, so the wrapped content just renders normally with no transform.
  *
- * Only takes over the touch gesture once a genuine downward pull is
- * detected starting from scrollTop === 0 — everything else (normal
- * scrolling, scrolling down then back up) is left completely alone.
+ * touchmove is NOT passive while actively pulling — preventDefault()
+ * stops iOS's own scroll/bounce from engaging at the same time and
+ * visually fighting this gesture, which is what made this feel broken
+ * on a page with real scrollable content (Bills) specifically.
+ *
+ * Same underlying refresh action as AccountModal's Force Sync button —
+ * disconnect() then connect(), not just connect() again, since PowerSync
+ * can believe it's already connected even while genuinely stuck.
  */
-export function PullToRefresh({ containerRef }: PullToRefreshProps) {
+export function PullToRefresh({ containerRef, children }: PullToRefreshProps) {
   const { pathname } = useLocation()
   const enabled = ENABLED_PATHS.includes(pathname)
   const [pull, setPull] = useState(0)
@@ -64,6 +73,7 @@ export function PullToRefresh({ containerRef }: PullToRefreshProps) {
         return
       }
       pulling.current = true
+      e.preventDefault()
       setPull(Math.min(MAX_PULL, delta * 0.5))
     }
 
@@ -75,6 +85,7 @@ export function PullToRefresh({ containerRef }: PullToRefreshProps) {
       pulling.current = false
       startY.current = null
       if (pullRef.current >= PULL_THRESHOLD) {
+        setPull(HOLD_OFFSET)
         setRefreshing(true)
         try {
           await powerSyncDb.disconnect()
@@ -91,7 +102,7 @@ export function PullToRefresh({ containerRef }: PullToRefreshProps) {
     }
 
     el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
     el.addEventListener('touchend', onTouchEnd, { passive: true })
     return () => {
       el.removeEventListener('touchstart', onTouchStart)
@@ -100,31 +111,43 @@ export function PullToRefresh({ containerRef }: PullToRefreshProps) {
     }
   }, [containerRef, enabled, refreshing])
 
-  if (!enabled) return null
-
-  const active = pull > 0 || refreshing
+  const offset = refreshing ? HOLD_OFFSET : pull
   const progress = Math.min(1, pull / PULL_THRESHOLD)
 
   return (
-    <div
-      className="absolute left-0 right-0 flex justify-center pointer-events-none"
-      style={{ top: 'var(--safe-top)', height: 0, opacity: active ? 1 : 0, zIndex: 40 }}
-    >
+    <div style={{ position: 'relative' }}>
+      {enabled && (
+        <div
+          className="absolute left-0 right-0 flex items-end justify-center pointer-events-none"
+          style={{
+            top: -INDICATOR_HEIGHT,
+            height: INDICATOR_HEIGHT,
+            transform: `translateY(${offset}px)`,
+            opacity: offset > 4 ? 1 : 0,
+          }}
+        >
+          <div
+            className="mb-1 w-8 h-8 rounded-full flex items-center justify-center shadow"
+            style={{ background: 'var(--color-surface)' }}
+          >
+            <RefreshCw
+              size={16}
+              className={refreshing ? 'animate-spin' : ''}
+              style={{
+                color: 'var(--color-ink-muted)',
+                transform: refreshing ? undefined : `rotate(${progress * 360}deg)`,
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div
-        className="mt-3 w-8 h-8 rounded-full flex items-center justify-center shadow"
         style={{
-          background: 'var(--color-surface)',
-          transform: `translateY(${refreshing ? 8 : pull * 0.6}px) scale(${refreshing ? 1 : 0.6 + progress * 0.4})`,
+          transform: `translateY(${offset}px)`,
+          transition: pulling.current ? 'none' : 'transform 0.25s ease-out',
         }}
       >
-        <RefreshCw
-          size={16}
-          className={refreshing ? 'animate-spin' : ''}
-          style={{
-            color: 'var(--color-ink-muted)',
-            transform: refreshing ? undefined : `rotate(${progress * 360}deg)`,
-          }}
-        />
+        {children}
       </div>
     </div>
   )

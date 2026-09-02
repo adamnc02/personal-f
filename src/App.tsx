@@ -71,14 +71,15 @@ function AppShell() {
         >
           <ScrollToTop containerRef={contentRef} />
           <OpportunisticBackup />
-          <PullToRefresh containerRef={contentRef} />
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/salary" element={<Salary />} />
-            <Route path="/loans" element={<Loans />} />
-            <Route path="/bills" element={<Bills />} />
-            <Route path="/scenarios" element={<Scenarios />} />
-          </Routes>
+          <PullToRefresh containerRef={contentRef}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/salary" element={<Salary />} />
+              <Route path="/loans" element={<Loans />} />
+              <Route path="/bills" element={<Bills />} />
+              <Route path="/scenarios" element={<Scenarios />} />
+            </Routes>
+          </PullToRefresh>
         </div>
         <BottomNav />
       </div>
