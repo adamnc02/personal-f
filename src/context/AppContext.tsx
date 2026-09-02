@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppData, Person, Bill, Loan, Scenario } from '../types/models'
 import { powerSyncDb } from '../lib/powersync/database'
 import { getHouseholdId } from '../lib/powersync/household'
@@ -110,14 +110,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Local-only "which view am I looking at" — deliberately NOT synced
   // (no column for it anywhere), separate from linkedUserId ("which row
   // structurally IS me"). Defaults to whichever person is linked to the
-  // signed-in user, falling back to the first person, but only when the
-  // current selection is empty or no longer exists (e.g. that person was
-  // removed) — never overrides a manual switch-view choice otherwise.
+  // signed-in user, falling back to the first person if no linked row
+  // exists yet, but never overrides an explicit manual switch-view choice.
+  //
+  // manualSelection tracks that distinction — this effect's OWN
+  // corrective assignments never set it, only setPrimaryPerson (the
+  // function actually exposed to the UI) does. Without this, a real bug
+  // found during household linking: while PowerSync briefly delivers
+  // people rows out of order during a sync-bucket recompute (triggered
+  // by a partner's household_members row changing), this effect could
+  // run at a moment when the caller's own linked row hadn't re-arrived
+  // yet, incorrectly default to whichever row *had* arrived, and then
+  // never self-correct once the real linked row showed up a moment
+  // later — because "is the current selection still a valid person id"
+  // was the only check, and the wrong row was, by then, a valid person.
+  // Now the effect actively prefers the linked-to-me row on every
+  // people-array change (not just when the current selection breaks),
+  // unless the person deliberately chose to view someone else.
+  const manualSelection = useRef(false)
+
   useEffect(() => {
     if (people.length === 0) return
-    if (people.some((p) => p.id === primaryPersonId)) return
     const linkedToMe = people.find((p) => p.linkedUserId === session?.user.id)
-    setPrimaryPersonId(linkedToMe?.id ?? people[0].id)
+    const currentExists = people.some((p) => p.id === primaryPersonId)
+
+    if (currentExists && manualSelection.current) return
+
+    if (linkedToMe) {
+      if (primaryPersonId !== linkedToMe.id) setPrimaryPersonId(linkedToMe.id)
+      return
+    }
+    if (!currentExists) {
+      setPrimaryPersonId(people[0].id)
+    }
   }, [people, primaryPersonId, session])
 
   const data: AppData = useMemo(
@@ -137,7 +162,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addPerson: AppContextValue['addPerson'] = (person) => writes.insertPerson(requireUser(), requireHousehold(), person)
   const updatePerson: AppContextValue['updatePerson'] = (id, updates) => writes.updatePerson(id, updates)
   const removePerson: AppContextValue['removePerson'] = (id) => writes.removePerson(id)
-  const setPrimaryPerson: AppContextValue['setPrimaryPerson'] = (id) => setPrimaryPersonId(id)
+  const setPrimaryPerson: AppContextValue['setPrimaryPerson'] = (id) => {
+    manualSelection.current = true
+    setPrimaryPersonId(id)
+  }
   const setAsMe: AppContextValue['setAsMe'] = async (id) => {
     const userId = requireUser()
     const currentlyLinked = people.find((p) => p.linkedUserId === userId)
