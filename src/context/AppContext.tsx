@@ -15,6 +15,13 @@ interface AppContextValue {
   updatePerson: (id: string, updates: Partial<Omit<Person, 'id'>>) => Promise<void>
   removePerson: (id: string) => Promise<void>
   setPrimaryPerson: (id: string) => void
+  /** The real "Set as me" action — claims this person row as the signed-in
+   *  user's own identity (writes linked_user_id, clearing it from
+   *  whichever row previously had it, since only one row per household
+   *  can be linked to a given user), and switches the local dashboard
+   *  view to it. This is what the household merge/redeem logic actually
+   *  keys off of — setPrimaryPerson alone does not touch linked_user_id. */
+  setAsMe: (id: string) => Promise<void>
 
   addBill: (bill: Omit<Bill, 'id'>) => Promise<string>
   updateBill: (id: string, updates: Partial<Omit<Bill, 'id'>>) => Promise<void>
@@ -131,6 +138,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updatePerson: AppContextValue['updatePerson'] = (id, updates) => writes.updatePerson(id, updates)
   const removePerson: AppContextValue['removePerson'] = (id) => writes.removePerson(id)
   const setPrimaryPerson: AppContextValue['setPrimaryPerson'] = (id) => setPrimaryPersonId(id)
+  const setAsMe: AppContextValue['setAsMe'] = async (id) => {
+    const userId = requireUser()
+    const currentlyLinked = people.find((p) => p.linkedUserId === userId)
+    if (currentlyLinked && currentlyLinked.id !== id) {
+      await writes.clearLinkedUserId(currentlyLinked.id)
+    }
+    await writes.updatePerson(id, { linkedUserId: userId })
+    setPrimaryPersonId(id)
+  }
 
   const addBill: AppContextValue['addBill'] = (bill) => writes.insertBill(requireUser(), requireHousehold(), bill)
   const updateBill: AppContextValue['updateBill'] = (id, updates) => writes.updateBill(id, updates)
@@ -216,6 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updatePerson,
         removePerson,
         setPrimaryPerson,
+        setAsMe,
         addBill,
         updateBill,
         removeBill,

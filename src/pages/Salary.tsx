@@ -20,7 +20,7 @@ const STUDENT_LOAN_LABELS: Record<StudentLoanPlan, string> = {
 }
 
 export function Salary() {
-  const { data, setData, updatePerson, addPerson, removePerson, setPrimaryPerson } = useAppData()
+  const { data, setData, updatePerson, addPerson, removePerson, setAsMe } = useAppData()
   const [addingPerson, setAddingPerson] = useState(false)
   const [editingDeduction, setEditingDeduction] = useState<{ personId: string; deductionId: string } | null>(null)
   const [newName, setNewName] = useState('')
@@ -144,14 +144,18 @@ export function Salary() {
                 <div className="flex items-center gap-2">
                   <h2 className="font-display text-lg font-semibold text-[var(--color-ink)]">{person.name}</h2>
                   <button
-                    onClick={() => setPrimaryPerson(person.id)}
+                    onClick={() => setAsMe(person.id)}
                     disabled={isPrimary}
                     className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-colors"
                     style={{
                       background: isPrimary ? 'var(--color-coral)' : 'var(--color-bg-elevated)',
                       color: isPrimary ? '#fff' : 'var(--color-ink-muted)',
                     }}
-                    title={isPrimary ? 'This is your own dashboard view' : 'Make this your dashboard view'}
+                    title={
+                      isPrimary
+                        ? 'This is your dashboard view, and this row is linked to your account'
+                        : 'Claim this row as yourself — links it to your account and switches your dashboard view to it'
+                    }
                   >
                     {isPrimary ? 'Me' : 'Set as me'}
                   </button>

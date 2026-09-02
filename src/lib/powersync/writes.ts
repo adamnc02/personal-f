@@ -138,6 +138,16 @@ export async function removeDeduction(id: string): Promise<void> {
   await powerSyncDb.execute('DELETE FROM salary_deductions WHERE id = ?', [id])
 }
 
+/** Separate from the generic updatePerson() on purpose — Partial-update's
+ *  `undefined` means "don't touch this field," so there's no clean way to
+ *  express "explicitly clear linked_user_id" through it. This is that
+ *  explicit clear, used by setAsMe() in AppContext before claiming a
+ *  different row (the unique index only allows one linked row per
+ *  household per user, so the old one has to be cleared first). */
+export async function clearLinkedUserId(personId: string): Promise<void> {
+  await powerSyncDb.execute('UPDATE people SET linked_user_id = NULL WHERE id = ?', [personId])
+}
+
 export async function insertBill(userId: string, householdId: string, bill: Omit<Bill, 'id'>): Promise<string> {
   const id = nanoid(8)
   await powerSyncDb.execute(
