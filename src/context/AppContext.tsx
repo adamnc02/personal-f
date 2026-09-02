@@ -206,17 +206,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     for (const person of restored.people) {
       const newId = await writes.insertPerson(userId, hhId, person)
-      // Bills/loans reference person ids — remap after people are
-      // (re)created, since insertPerson generates a fresh id rather than
-      // reusing the backup's original one (avoids ever colliding with an
-      // id something else in the household already generated).
+      // Bills/loans reference person ids in TWO fields — ownerId
+      // (personal-bill ownership) AND payee (who a joint bill's split is
+      // paid through) — both need remapping after people are (re)created,
+      // since insertPerson generates a fresh id rather than reusing the
+      // backup's original one. Missing payee here was the actual bug:
+      // joint bills kept their old pre-restore payee id, which resolved
+      // to nobody afterward, showing as "Unassigned".
       idMap.set(person.id, newId)
     }
     for (const bill of restored.bills) {
-      await writes.insertBill(userId, hhId, { ...bill, ownerId: idMap.get(bill.ownerId) ?? bill.ownerId })
+      await writes.insertBill(userId, hhId, {
+        ...bill,
+        ownerId: idMap.get(bill.ownerId) ?? bill.ownerId,
+        payee: bill.payee ? (idMap.get(bill.payee) ?? bill.payee) : bill.payee,
+      })
     }
     for (const loan of restored.loans) {
-      await writes.insertLoan(userId, hhId, { ...loan, ownerId: idMap.get(loan.ownerId) ?? loan.ownerId })
+      await writes.insertLoan(userId, hhId, {
+        ...loan,
+        ownerId: idMap.get(loan.ownerId) ?? loan.ownerId,
+        payee: loan.payee ? (idMap.get(loan.payee) ?? loan.payee) : loan.payee,
+      })
     }
     for (const scenario of restored.scenarios) {
       await writes.insertScenario(userId, scenario)
