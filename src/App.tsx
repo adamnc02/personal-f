@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { AuthGate } from './components/AuthGate'
 import { BottomNav } from './components/BottomNav'
 import { PullToRefresh } from './components/PullToRefresh'
+import { LegacyDataMigration } from './components/LegacyDataMigration'
 import { Dashboard } from './pages/Dashboard'
 import { Salary } from './pages/Salary'
 import { Loans } from './pages/Loans'
@@ -70,6 +71,7 @@ function AppShell() {
           }}
         >
           <ScrollToTop containerRef={contentRef} />
+          <LegacyDataMigration />
           <OpportunisticBackup />
           <PullToRefresh containerRef={contentRef}>
             <Routes>
