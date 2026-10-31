@@ -1,6 +1,7 @@
 import type { AbstractPowerSyncDatabase, CrudEntry, PowerSyncBackendConnector } from '@powersync/web'
 import { UpdateType } from '@powersync/web'
 import { supabase } from '../supabaseClient'
+import { isPermanentRejection, uploadAuthorization } from './uploadAuth'
 
 const POWERSYNC_URL = import.meta.env.VITE_POWERSYNC_URL
 
@@ -8,16 +9,10 @@ if (!POWERSYNC_URL) {
   throw new Error("Missing VITE_POWERSYNC_URL. Copy it from the PowerSync Dashboard's Connect button into .env.local.")
 }
 
-// Errors PowerSync should NOT retry — retrying a write Postgres has
-// permanently rejected (bad data shape, a constraint violation, an RLS
-// denial) would just loop forever and block every later write behind it
-// in the upload queue. Same list as PowerSync's own reference Supabase
-// connector implementation.
-const FATAL_RESPONSE_CODES = [
-  /^22...$/, // Class 22 — Data Exception (e.g. type mismatch)
-  /^23...$/, // Class 23 — Integrity Constraint Violation (NOT NULL/FK/UNIQUE)
-  /^42501$/, // Insufficient privilege — typically an RLS denial
-]
+// Which refusals are permanent (and discarded) lives in uploadAuth.ts, with
+// the session check: a lapsed sign-in sends the publishable key, the upload
+// runs as `anon`, and its 42501 must be retried, not discarded
+// (MIGRATION-LESSONS §77).
 
 /**
  * The two methods PowerSync's client SDK calls automatically:
@@ -53,6 +48,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 
     let lastOp: CrudEntry | null = null
     try {
+      // Throws with no session, so the whole transaction stays queued.
+      const authorization = await uploadAuthorization(() => supabase.auth.getSession())
       for (const op of transaction.crud) {
         lastOp = op
         const table = supabase.from(op.table)
@@ -61,22 +58,21 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         switch (op.op) {
           case UpdateType.PUT: {
             const record = { ...op.opData, id: op.id }
-            result = await table.upsert(record)
+            result = await table.upsert(record).setHeader('Authorization', authorization)
             break
           }
           case UpdateType.PATCH: {
-            result = await table.update(op.opData ?? {}).eq('id', op.id)
+            result = await table.update(op.opData ?? {}).eq('id', op.id).setHeader('Authorization', authorization)
             break
           }
           case UpdateType.DELETE: {
-            result = await table.delete().eq('id', op.id)
+            result = await table.delete().eq('id', op.id).setHeader('Authorization', authorization)
             break
           }
         }
 
         if (result?.error) {
-          const code = result.error.code ?? ''
-          if (FATAL_RESPONSE_CODES.some((pattern) => pattern.test(code))) {
+          if (isPermanentRejection(result.error)) {
             // Not recoverable by retrying — log it and move on, or every
             // later write in the queue gets stuck behind a write that can
             // never succeed.
