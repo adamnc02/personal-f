@@ -144,6 +144,13 @@ manual Back Up Now. Restore is a full replace.
 - **A permanently rejected write blocks the upload queue**, which is why the connector discards
   constraint violations. A discard is a real data loss if it is not logged — the later apps added a
   visible rejected-writes list for exactly this reason.
+- 🚨 **No upload without a session** (`src/lib/powersync/uploadAuth.ts`, MIGRATION-LESSONS §77). With
+  no session — an access token that expired with no signal, then a refresh that failed — supabase-js
+  sends the publishable key as the bearer, the upload runs as `anon`, and the server answers `42501
+  permission denied`. That code was in the discard list, so a lapsed sign-in threw away every queued
+  write, here with only a console line. `uploadData()` now reads the session first and throws without
+  one (the queue is kept; sign-out disconnects and never clears), sets the JWT on every request, and
+  retries a 42501 privilege refusal; only an RLS refusal is discarded. `scripts/verify-upload-auth.ts`.
 - **There is no salary history and no dated transactions.** Anything that needs "what was true
   then" cannot be answered here. Do not build it — that is what the ledger apps are.
 - **`keepalive/`** exists because a Free-plan PowerSync instance is deprovisioned for inactivity.
